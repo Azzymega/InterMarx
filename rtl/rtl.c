@@ -128,16 +128,16 @@ void RtlReaderInitialize(struct READER *thisPtr, void *stream)
 
 BYTE RtlReaderReadByte(struct READER *thisPtr)
 {
-    BYTE target;
-    RtlReaderRead(thisPtr,&target, sizeof target);
-    return target;
+    BYTE* target = (BYTE*)&thisPtr->stream[thisPtr->offset];
+    thisPtr->offset += sizeof(BYTE);
+    return *target;
 }
 
 INT32 RtlReaderReadInt32(struct READER *thisPtr)
 {
-    INT32 target;
-    RtlReaderRead(thisPtr,&target, sizeof target);
-    return target;
+    INT32* target = (INT32*)&thisPtr->stream[thisPtr->offset];
+    thisPtr->offset += sizeof(INT32);
+    return *target;
 }
 
 INT64 RtlReaderReadInt64(struct READER *thisPtr)

@@ -2,13 +2,20 @@
 #include <intermarx.h>
 #include <rtl/rtl.h>
 #include <far/far.h>
+#include <hp/hp.h>
 
 struct FIELD;
 
 struct OBJECT_HEADER
 {
+    UINTPTR size;
     struct TYPE* type;
-    INTPTR interop;
+
+    UINTPTR interop : 1;
+    UINTPTR managedWrapper : 1;
+    UINTPTR reserved : 30;
+
+    enum GC_COLOR color;
     VOID* forward;
 };
 
@@ -38,6 +45,7 @@ struct INUMANAGED INUPACKED MANAGED_WRAPPER
     struct OBJECT_HEADER header;
 
     NATIVE_HANDLE handle;
+    VOID* fixUpAddress;
 };
 
 struct INUMANAGED INUPACKED MANAGED_STRING
@@ -94,6 +102,7 @@ struct INUMANAGED INUPACKED FAR_CALL_MANAGED_ATTRIBUTE
     enum FAR_CALL_SYMBOL_SOURCE source;
 };
 
+VOID* ObManagedArrayInitialize(UINTPTR elementCount, UINTPTR elementSize);
 VOID ObManagedAttributeInitialize(struct MANAGED_ATTRIBUTE* thisPtr);
 VOID ObManagedExceptionInitialize(struct MANAGED_EXCEPTION* thisPtr, struct TYPE* type, const WCHAR* message);
 VOID ObManagedWrapperInitialize(struct MANAGED_WRAPPER* thisPtr, VOID* nativeHandle);

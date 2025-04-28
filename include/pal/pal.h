@@ -8,6 +8,8 @@
 typedef UINTPTR (*THREAD_LAUNCH)(void *);
 typedef CRITICAL_SECTION MONITOR;
 
+void PalInitialize();
+
 void PalDebugbreak(const CHAR* message);
 UINTPTR PalThreadBootstrap(VOID* arg);
 
@@ -28,6 +30,14 @@ void PalThreadExitCurrent(UINTPTR code);
 void PalThreadResume(NATIVE_HANDLE thread);
 void PalThreadSuspend(NATIVE_HANDLE thread);
 
+void PalEnterMaintainenceMode();
+void PalExitMaintainenceMode();
+void PalSafepoint();
+
 void PalMonitorInitialize(MONITOR* monitor);
 void PalMonitorEnter(MONITOR* monitor);
 void PalMonitorExit(MONITOR* monitor);
+
+BOOLEAN PalTryEnterLock(INUVOLATILE BOOLEAN* monitor);
+VOID PalExitLock(INUVOLATILE BOOLEAN* monitor);
+VOID PalEnterLock(INUVOLATILE BOOLEAN* monitor);

@@ -1,9 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <ex/runtime.h>
-#include <pal/pal.h>
+#include <hp/hp.h>
 #include <ldr/ldr.h>
+#include <pal/pal.h>
+#include <pal/corelib.h>
 #include <mt/mt.h>
+// #include <sanitizer/asan_interface.h>
+
 
 INUGLOBAL struct DOMAIN* ExGlobalZeroDomain;
 INUGLOBAL MONITOR ExGlobalStackTraceMonitor;
@@ -14,14 +18,14 @@ VOID MxDumpStackTrace(struct EXCEPTION_STATE* state)
 
     struct MANAGED_EXCEPTION* exception = state->exception;
 
-    printf("%s","\r\n");
-    printf("Exception in thread %i! ",PalThreadGetCurrentId());
-    wprintf(L"%ls",exception->header.type->fullName.characters);
-    printf("%s"," - ");
+    printf("%s", "\r\n");
+    printf("Exception in thread %i! ", PalThreadGetCurrentId());
+    wprintf(L"%ls", exception->header.type->fullName.characters);
+    printf("%s", " - ");
 
     if (exception->nativeMessage != NULL)
     {
-        wprintf(L"%ls",exception->nativeMessage);
+        wprintf(L"%ls", exception->nativeMessage);
     }
     else
     {
@@ -31,24 +35,31 @@ VOID MxDumpStackTrace(struct EXCEPTION_STATE* state)
         }
     }
 
-    printf("%s","\r\n");
-    printf("%s","Stack trace: \r\n");
+    printf("%s", "\r\n");
+    printf("%s", "Stack trace: \r\n");
 
     for (int i = 0; i < state->stackTrace.count; ++i)
     {
-        struct NSTRING* str = RtlVectorGet(&state->stackTrace,i);
-        wprintf(L"%ls\r\n",str->characters);
+        struct NSTRING* str = RtlVectorGet(&state->stackTrace, i);
+        wprintf(L"%ls\r\n", str->characters);
     }
 
-    printf("%s","\r\n");
+    printf("%s", "\r\n");
     fflush(stdout);
 
     PalMonitorExit(&ExGlobalStackTraceMonitor);
+
+    while (TRUE);
     PalThreadExitCurrent(-1);
 }
 
-VOID MxStart(VOID *buffer)
+VOID MxStart(VOID* buffer)
 {
+    // __sanitizer_set_report_path("test.txt");
+
+    PalInitialize();
+    HpInitialize();
+
     struct IMAGE_LOADER loader = {
         .image = buffer,
         .offset = 0
@@ -56,7 +67,7 @@ VOID MxStart(VOID *buffer)
 
     PalMonitorInitialize(&ExGlobalStackTraceMonitor);
 
-    struct DOMAIN *domain = LdrLoadDomain(&loader);
+    struct DOMAIN* domain = LdrLoadDomain(&loader);
     ExGlobalZeroDomain = domain;
 
     ExInitialize();
@@ -67,8 +78,8 @@ VOID MxStart(VOID *buffer)
 
     FarInitialize(domain);
 
-    struct TYPE *getType = ExDomainLocateType(domain, "Internationale.Runtime.Initializer");
-    struct METHOD *method = ExTypeLocateMethod(getType, "Initialize");
+    struct TYPE* getType = ExDomainLocateType(domain, "Internationale.Runtime.Initializer");
+    struct METHOD* method = ExTypeLocateMethod(getType, "Initialize");
 
     if (MARX_SUCCESS(ExMethodPrologue(method)))
     {
@@ -82,12 +93,12 @@ VOID MxStart(VOID *buffer)
 
 int main(void)
 {
-    FILE *f = fopen("H:\\Projects\\CC++\\MarxVm\\System.vkp", "rb");
+    FILE* f = fopen("H:\\Projects\\CC++\\MarxVm\\System.vkp", "rb");
     fseek(f, 0, SEEK_END);
     size_t fsize = ftell(f);
     fseek(f, 0, SEEK_SET);
 
-    BYTE *buffer = malloc(fsize);
+    BYTE* buffer = malloc(fsize);
     fread(buffer, fsize, 1, f);
 
     MxStart(buffer);

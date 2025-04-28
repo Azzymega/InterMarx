@@ -45,6 +45,7 @@ VOID LdrImageLoaderWind(struct IMAGE_LOADER* thisPtr, UINTPTR length);
 VOID LdrImageRead(struct IMAGE_LOADER* thisPtr, VOID* dest, UINTPTR length);
 UINT32 LdrImageReadIndex(struct IMAGE_LOADER* thisPtr);
 
+VOID LdrFillTypeInfo(struct DOMAIN* thisPtr);
 VOID LdrCalculateTypeSizes(struct DOMAIN* thisPtr);
 UINTPTR LdrCalculateTypeSize(struct TYPE* thisPtr);
 

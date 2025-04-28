@@ -16,6 +16,8 @@ VOID PalManagedThreadCreate(struct MANAGED_WRAPPER *thread, struct MANAGED_DELEG
 
     target->wrapper = thread;
     thread->header.interop = TRUE;
+    thread->header.managedWrapper = TRUE;
+    thread->fixUpAddress = &target->wrapper;
     thread->handle = (NATIVE_HANDLE)target;
 
     target->delegate = *delegate;
@@ -59,7 +61,7 @@ INT32 PalManagedThreadId()
 
 VOID* PalManagedThreadGetCurrent()
 {
-    return &MtThreadGetCurrent()->wrapper;
+    return MtThreadGetCurrent()->wrapper;
 }
 
 INT64 PalTimerClock()
@@ -69,7 +71,7 @@ INT64 PalTimerClock()
 
 VOID PalLoggerPrint(const CHAR *message)
 {
-    puts(message);
+    printf("%s",message);
     fflush(stdout);
 }
 
@@ -170,7 +172,7 @@ struct MANAGED_DELEGATE * PalManagedDelegateCombineImplNative(struct MANAGED_DEL
             counter++;
         }
 
-        ObManagedDelegateInitialize(newDelegate, objects, callSites, maxCount, thisPtr);
+        ObManagedDelegateInitialize(newDelegate, objects, callSites, counter, thisPtr);
 
         return newDelegate;
     }

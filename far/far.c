@@ -127,9 +127,6 @@ MARX_STATUS FarNativeMethodExecute(struct FRAME *frame, struct FRAME_BLOCK *retu
     BYTE stackFrame[16384];
     UINTPTR stackFramePointer = 16384;
 
-    BOOLEAN *buffersUsed = HpAllocateNative(frame->method->parameters.count * sizeof(BOOLEAN));
-    VOID **buffers = HpAllocateNative(frame->method->parameters.count * sizeof(VOID *));
-
     for (int i = frame->method->parameters.count - 1; i >= 0; --i)
     {
         if (frame->args[i].type == MACHINE_OBJECT)
@@ -150,9 +147,7 @@ MARX_STATUS FarNativeMethodExecute(struct FRAME *frame, struct FRAME_BLOCK *retu
                     {
                         case STRING_ENCODING_ISO646:
                         {
-                            char *buffer = HpAllocateNative((str->characters->count + 1) * sizeof(CHAR));
-                            buffers[i] = buffer;
-                            buffersUsed[i] = TRUE;
+                            char *buffer = PalStackAllocate((str->characters->count + 1) * sizeof(CHAR));
 
                             for (UINTPTR z = 0; z < str->characters->count; ++z)
                             {
@@ -165,9 +160,7 @@ MARX_STATUS FarNativeMethodExecute(struct FRAME *frame, struct FRAME_BLOCK *retu
                         }
                         case STRING_ENCODING_UCS2:
                         {
-                            wchar_t *buffer = HpAllocateNative((str->characters->count + 1) * sizeof(WCHAR));
-                            buffers[i] = buffer;
-                            buffersUsed[i] = TRUE;
+                            wchar_t *buffer = PalStackAllocate((str->characters->count + 1) * sizeof(WCHAR));
 
                             for (UINTPTR z = 0; z < str->characters->count; ++z)
                             {
@@ -289,17 +282,6 @@ MARX_STATUS FarNativeMethodExecute(struct FRAME *frame, struct FRAME_BLOCK *retu
     }
 
     *returnValue = slot;
-
-    for (INTPTR i = 0; i < frame->method->parameters.count; ++i)
-    {
-        if (buffersUsed[i] == TRUE)
-        {
-            HpFreeNative(buffers[i]);
-        }
-    }
-
-    HpFreeNative(buffers);
-    HpFreeNative(buffersUsed);
 
     return STATUS_SUCCESS;
 }

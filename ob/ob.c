@@ -1,6 +1,15 @@
 #include <hp/hp.h>
 #include <ob/ob.h>
 
+void * ObManagedArrayInitialize(UINTPTR elementCount, UINTPTR elementSize)
+{
+    struct MANAGED_ARRAY* array = HpAllocateManaged(sizeof(struct MANAGED_ARRAY)+(elementCount*elementSize));
+    VOID* infoOffset = array;
+    infoOffset += sizeof(struct MANAGED_ARRAY);
+    array->byte = infoOffset;
+    return array;
+}
+
 VOID ObManagedAttributeInitialize(struct MANAGED_ATTRIBUTE *thisPtr)
 {
     RtlVectorInitialize(&thisPtr->params);
@@ -23,8 +32,8 @@ VOID ObManagedDelegateInitialize(struct MANAGED_DELEGATE *thisPtr, VOID **object
     struct MANAGED_DELEGATE *base)
 {
     thisPtr->reserved = FALSE;
-    thisPtr->callSites = HpAllocateManaged(sizeof(struct MANAGED_ARRAY));
-    thisPtr->thisObjects = HpAllocateManaged(sizeof(struct MANAGED_ARRAY));
+    thisPtr->callSites = ObManagedArrayInitialize(entryCount,sizeof(VOID*));
+    thisPtr->thisObjects = ObManagedArrayInitialize(entryCount,sizeof(VOID*));
 
     thisPtr->callSites->elementType = base->callSites->elementType;
     thisPtr->callSites->header.type = base->callSites->header.type;
@@ -32,8 +41,8 @@ VOID ObManagedDelegateInitialize(struct MANAGED_DELEGATE *thisPtr, VOID **object
     thisPtr->thisObjects->elementType = base->thisObjects->elementType;
     thisPtr->thisObjects->header.type = base->thisObjects->header.type;
 
-    thisPtr->callSites->pointer = HpAllocateNative(sizeof(VOID*)*entryCount);
-    thisPtr->thisObjects->pointer = HpAllocateNative(sizeof(VOID*)*entryCount);
+    thisPtr->callSites->count = entryCount;
+    thisPtr->thisObjects->count = entryCount;
 
     for (int i = 0; i < entryCount; ++i)
     {

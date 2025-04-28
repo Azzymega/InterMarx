@@ -85,9 +85,14 @@ MARX_STATUS ExMethodPrologueDelegate(struct MANAGED_DELEGATE *delegate, struct F
             frame.args = args;
         }
 
-        frame.stack = PalStackBufferAllocate(method->variables.count+method->parameters.count+20,
+
+        UINTPTR stackSize = method->variables.count+method->parameters.count+20;
+
+        frame.stack = PalStackBufferAllocate(stackSize,
                                              sizeof(struct FRAME_BLOCK));
         frame.sp = 0;
+        frame.maxStack = stackSize;
+
         frame.variables = PalStackBufferAllocate(method->variables.count, sizeof(struct FRAME_BLOCK));
 
         PalMemoryZeroBlock(frame.variables, method->variables.count, sizeof(struct FRAME_BLOCK));
@@ -165,9 +170,13 @@ MARX_STATUS ExMethodPrologueArgs(struct METHOD *method, struct FRAME_BLOCK *args
         frame.args = args;
     }
 
-    frame.stack = PalStackBufferAllocate(method->variables.count+method->parameters.count+20,
+    UINTPTR stackSize = method->variables.count+method->parameters.count+20;
+
+    frame.stack = PalStackBufferAllocate(stackSize,
                                          sizeof(struct FRAME_BLOCK));
     frame.sp = 0;
+    frame.maxStack = stackSize;
+
     frame.variables = PalStackBufferAllocate(method->variables.count, sizeof(struct FRAME_BLOCK));
 
     PalMemoryZeroBlock(frame.variables, method->variables.count, sizeof(struct FRAME_BLOCK));
@@ -231,15 +240,20 @@ MARX_STATUS ExMethodPrologueCtor(struct METHOD *method, struct FRAME *previous, 
         args[0].descriptor = ptr;
     }
 
+    struct FRAME_BLOCK thisPtr = ExPop(previous);
     for (int i = method->parameters.count - 1; i >= 1; --i)
     {
         args[i] = ExPop(previous);
     }
+    ExPush(previous,thisPtr);
 
     frame.args = args;
-    frame.stack = PalStackBufferAllocate(method->variables.count+method->parameters.count+20,
+    UINTPTR stackSize = method->variables.count+method->parameters.count+20;
+
+    frame.stack = PalStackBufferAllocate(stackSize,
                                          sizeof(struct FRAME_BLOCK));
     frame.sp = 0;
+    frame.maxStack = stackSize;
     frame.variables = PalStackBufferAllocate(method->variables.count, sizeof(struct FRAME_BLOCK));
 
     PalMemoryZeroBlock(frame.variables, method->variables.count, sizeof(struct FRAME_BLOCK));
@@ -304,24 +318,7 @@ MARX_STATUS ExMethodPrologueArgsNative(struct METHOD *method, struct FRAME_BLOCK
         frame.args = args;
     }
 
-    frame.stack = PalStackBufferAllocate(method->variables.count+method->parameters.count+20,
-                                         sizeof(struct FRAME_BLOCK));
-    frame.variables = PalStackBufferAllocate(method->variables.count, sizeof(struct FRAME_BLOCK));
-
-    PalMemoryZeroBlock(frame.variables, method->variables.count, sizeof(struct FRAME_BLOCK));
-
-    for (int i = 0; i < method->variables.count; ++i)
-    {
-        struct TYPE *variableType = RtlVectorGet(&method->variables, i);
-        if (ExMetadataIs(variableType->metadata, MxExMetadataStruct) &&
-            !ExMetadataIs(variableType->metadata, MxExMetadataPrimitive))
-        {
-            frame.variables[i].type = MACHINE_STRUCT;
-            frame.variables[i].valueType.type = variableType;
-            frame.variables[i].valueType.pointer = PalStackAllocate(variableType->size);
-        }
-    }
-
+    frame.sp = 0;
     frame.method = method;
     frame.domain = method->owner->domain;
     frame.next = NULL;
@@ -369,30 +366,15 @@ MARX_STATUS ExMethodPrologueCtorNative(struct METHOD *method, struct FRAME *prev
         args[0].descriptor = ptr;
     }
 
+    struct FRAME_BLOCK thisPtr = ExPop(previous);
     for (int i = method->parameters.count - 1; i >= 1; --i)
     {
         args[i] = ExPop(previous);
     }
+    ExPush(previous,thisPtr);
 
     frame.args = args;
-    frame.stack = PalStackBufferAllocate(method->variables.count+method->parameters.count+20,
-                                         sizeof(struct FRAME_BLOCK));
-    frame.variables = PalStackBufferAllocate(method->variables.count, sizeof(struct FRAME_BLOCK));
-
-    PalMemoryZeroBlock(frame.variables, method->variables.count, sizeof(struct FRAME_BLOCK));
-
-    for (int i = 0; i < method->variables.count; ++i)
-    {
-        struct TYPE *variableType = RtlVectorGet(&method->variables, i);
-        if (ExMetadataIs(variableType->metadata, MxExMetadataStruct) &&
-            !ExMetadataIs(variableType->metadata, MxExMetadataPrimitive))
-        {
-            frame.variables[i].type = MACHINE_STRUCT;
-            frame.variables[i].valueType.type = variableType;
-            frame.variables[i].valueType.pointer = PalStackAllocate(variableType->size);
-        }
-    }
-
+    frame.sp = 0;
     frame.method = method;
     frame.domain = method->owner->domain;
     frame.next = NULL;
@@ -548,16 +530,27 @@ MARX_STATUS ExLocateVirtualMethod(struct OBJECT_HEADER *header, struct METHOD *m
             {
                 if (targetMethod->parameters.count == method->parameters.count)
                 {
-                    if (memcmp(targetMethod->parameters.pointer,
-                               method->parameters.pointer,
-                               sizeof(VOID *) * targetMethod->parameters.count) == 0)
+                    BOOLEAN fail = FALSE;
+                    for (int t = 1; t < targetMethod->parameters.count; ++t)
                     {
-                        *returnTarget = targetMethod;
-                        return STATUS_SUCCESS;
+                        struct TYPE* firstParameter = RtlVectorGet(&targetMethod->parameters,t);
+                        struct TYPE* secondParameter = RtlVectorGet(&method->parameters,t);
+
+                        if (firstParameter != secondParameter)
+                        {
+                            fail = TRUE;
+                            break;
+                        }
+                    }
+
+                    if (fail)
+                    {
+                        continue;
                     }
                     else
                     {
-                        continue;
+                        *returnTarget = targetMethod;
+                        return STATUS_SUCCESS;
                     }
                 }
                 else
@@ -1329,6 +1322,8 @@ ExceptionHandlingZoneEnd:
                 struct FRAME_BLOCK value = ExPop(frame);
                 struct FRAME_BLOCK source = ExPop(frame);
 
+                struct OBJECT_HEADER* objData = source.descriptor;
+
                 if (MARX_FAIL(ExNullCheck(source)))
                 {
                     ExThrowException(&ExNullReference);
@@ -1568,19 +1563,18 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadString:
             {
+                INT32 index = RtlReaderReadInt32(&reader);
+                struct NSTRING* ptr = RtlVectorGet(&frame->method->stringTable, index);
+
                 struct MANAGED_STRING *string = HpAllocateManaged(sizeof(struct MANAGED_STRING));
-                PalMemoryZero(string,sizeof(struct MANAGED_STRING));
                 string->header.type = ExStringType;
 
-                struct MANAGED_ARRAY *array = HpAllocateManaged(sizeof(struct MANAGED_ARRAY));
+                struct MANAGED_ARRAY *array = ObManagedArrayInitialize(ptr->length,sizeof(WCHAR));
+
                 array->elementType = ExCharType;
                 array->header.type = ExCharArrayType;
-
-                INT32 index = RtlReaderReadInt32(&reader);
-                struct NSTRING *ptr = RtlVectorGet(&frame->method->stringTable, index);
-
                 array->count = ptr->length;
-                array->characters = HpAllocateNative(sizeof(WCHAR) * array->count);
+
                 PalMemoryCopy(array->characters, ptr->characters, sizeof(WCHAR) * array->count);
 
                 string->characters = array;
@@ -1611,7 +1605,7 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(obj)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
@@ -1638,21 +1632,21 @@ ExceptionHandlingZoneEnd:
                 struct TYPE *type = ExGetPoolElement(&reader, frame);
                 struct TYPE *arrayType = ExGetPoolElement(&reader, frame);
 
+                struct MANAGED_ARRAY *managed = NULL;
+
                 struct FRAME_BLOCK slot = ExPop(frame);
 
-                struct MANAGED_ARRAY *managed = HpAllocateManaged(sizeof(struct MANAGED_ARRAY));
-                managed->header.type = arrayType;
-                managed->elementType = type;
-
-                if (ExMetadataIs(managed->elementType->metadata, MxExMetadataStruct))
+                if (ExMetadataIs(type->metadata, MxExMetadataStruct))
                 {
-                    managed->byte = HpAllocateNative(slot.int32 * managed->elementType->size);
+                    managed = ObManagedArrayInitialize(slot.int32,type->size);
                 }
                 else
                 {
-                    managed->byte = HpAllocateNative(slot.int32 * sizeof(VOID *));
+                    managed = ObManagedArrayInitialize(slot.int32,sizeof(VOID*));
                 }
 
+                managed->header.type = arrayType;
+                managed->elementType = type;
                 managed->count = slot.int32;
 
                 struct FRAME_BLOCK newSlot = {0};
@@ -1686,6 +1680,8 @@ ExceptionHandlingZoneEnd:
             }
             case OpNewObject:
             {
+                PalSafepoint();
+
                 struct METHOD *ctor = ExGetPoolElement(&reader, frame);
                 struct FRAME_BLOCK ret;
                 struct FRAME_BLOCK block;
@@ -1703,11 +1699,12 @@ ExceptionHandlingZoneEnd:
                 {
                     block.type = MACHINE_OBJECT;
                     instance = HpAllocateManaged(ctor->owner->size + sizeof(struct OBJECT_HEADER));
-                    PalMemoryZero(instance, ctor->owner->size + sizeof(struct OBJECT_HEADER));
                     struct OBJECT_HEADER *obj = instance;
                     obj->type = ctor->owner;
                     block.descriptor = instance;
                 }
+
+                ExPush(frame, block);
 
                 if (ExMetadataIs(ctor->metadata, MxExMetadataExtern))
                 {
@@ -1741,8 +1738,6 @@ ExceptionHandlingZoneEnd:
                     }
                     ExMethodEpilogue(frame);
                 }
-
-                ExPush(frame, block);
 
                 break;
             }
@@ -1796,13 +1791,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -1826,13 +1821,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -1856,13 +1851,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -1886,13 +1881,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -1916,13 +1911,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -1946,13 +1941,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -1976,13 +1971,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -2006,13 +2001,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -2034,7 +2029,7 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
@@ -2056,13 +2051,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -2078,13 +2073,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -2100,13 +2095,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -2122,13 +2117,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -2144,13 +2139,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -2166,13 +2161,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -2188,13 +2183,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -2210,13 +2205,13 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExNullReference);
                     goto ExceptionHandlingZone;
                 }
 
                 if (MARX_FAIL(ExBoundCheck(array,index.int32)))
                 {
-                    ExThrowException(&ExExecutionEngineError);
+                    ExThrowException(&ExIndexOutOfRange);
                     goto ExceptionHandlingZone;
                 }
 
@@ -2315,6 +2310,8 @@ ExceptionHandlingZoneEnd:
             }
             case OpBranch:
             {
+                PalSafepoint();
+
                 INT32 offset = RtlReaderReadInt32(&reader);
                 RtlReaderSet(&reader, offset);
                 break;
@@ -2396,6 +2393,8 @@ ExceptionHandlingZoneEnd:
             }
             case OpCall:
             {
+                PalSafepoint();
+
                 struct METHOD *target = ExGetPoolElement(&reader, frame);
                 struct FRAME_BLOCK ret;
                 MARX_STATUS state;
@@ -2431,8 +2430,10 @@ ExceptionHandlingZoneEnd:
             }
             case OpVirtualCall:
             {
+                PalSafepoint();
+
                 struct METHOD *target = ExGetPoolElement(&reader, frame);
-                struct OBJECT_HEADER *hed = ExPeek(frame).descriptor;
+                struct OBJECT_HEADER *hed = frame->stack[frame->sp-target->parameters.count].descriptor; //ExPeek(frame).descriptor;
                 struct METHOD *virt;
                 struct FRAME_BLOCK ret;
                 MARX_STATUS state;
@@ -2448,6 +2449,7 @@ ExceptionHandlingZoneEnd:
                         virt->shortName,
                         "Invoke"))
                 {
+                    ExPop(frame);
                     state = ExMethodPrologueDelegate((struct MANAGED_DELEGATE *) hed,NULL, frame, &ret);
                     ExMethodEpilogue(frame);
                 }
@@ -2553,6 +2555,8 @@ ExceptionHandlingZoneEnd:
             }
             case OpBox:
             {
+                PalSafepoint();
+
                 struct TYPE *loadTarget = ExGetPoolElement(&reader, frame);
                 struct FRAME_BLOCK peek = ExPop(frame);
 

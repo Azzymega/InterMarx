@@ -238,6 +238,7 @@ struct TYPE
     struct VECTOR attributes;
 
     UINTPTR size;
+    BOOLEAN hasFinalizer;
 
     enum BASE_TYPE_SYSTEM_TYPE inlined;
     enum METADATA_CHARACTERISTICS metadata;
@@ -265,6 +266,7 @@ struct THREAD
 {
     UINTPTR id;
     NATIVE_HANDLE handle;
+    BOOLEAN inSafePoint;
 
     struct DOMAIN* domain;
     struct EXCEPTION_STATE state;
@@ -369,6 +371,7 @@ struct FRAME
 {
     struct READER* reader;
     INTPTR sp;
+    INTPTR maxStack;
 
     struct FRAME_BLOCK* stack;
     struct FRAME_BLOCK* args;

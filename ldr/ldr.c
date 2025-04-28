@@ -253,7 +253,7 @@ VOID *LdrLoadAttribute(struct IMAGE_LOADER *thisPtr)
     enum EXECUTIVE_OWNER_DESCRIPTOR *descriptor = thisPtr->sections[LdrImageReadIndex(thisPtr)];
     struct TYPE *declared = thisPtr->sections[LdrImageReadIndex(thisPtr)];
 
-    struct MANAGED_ATTRIBUTE *attribute = HpAllocateNative(sizeof(struct MANAGED_ATTRIBUTE));
+    struct MANAGED_ATTRIBUTE *attribute = HpAllocateNative(sizeof(struct MANAGED_ATTRIBUTE)+150); // TODO: BAD HACK! SCAN TYPE SIZES BEFORE LOADING ATTRIBUTES!
     ObManagedAttributeInitialize(attribute);
 
     attribute->owner = descriptor;
@@ -302,8 +302,7 @@ VOID *LdrLoadArgument(struct IMAGE_LOADER *thisPtr)
         const INT32 arrayCount = LdrImageReadIndex(thisPtr);
         const INT32 value = LdrImageReadIndex(thisPtr);
 
-        struct MANAGED_ARRAY *newArray = HpAllocateNative(sizeof(struct MANAGED_ARRAY));
-        newArray->int32 = HpAllocateNative(sizeof(INT32) * arrayCount);
+        struct MANAGED_ARRAY *newArray = ObManagedArrayInitialize(arrayCount,sizeof(INT32));
         newArray->header.type = ExDomainLocateType(thisPtr->domain, "System.Int32[]");
         newArray->elementType = declared;
         newArray->int32[arrayCount - 1] = value;
@@ -314,8 +313,7 @@ VOID *LdrLoadArgument(struct IMAGE_LOADER *thisPtr)
     {
         const INT32 arrayCount = LdrImageReadIndex(thisPtr);
 
-        struct MANAGED_ARRAY *newArray = HpAllocateNative(sizeof(struct MANAGED_ARRAY));
-        newArray->int32 = HpAllocateNative(sizeof(INT32) * arrayCount);
+        struct MANAGED_ARRAY *newArray = ObManagedArrayInitialize(arrayCount,sizeof(INT32));
         newArray->header.type = ExDomainLocateType(thisPtr->domain, "System.Int32[]");
         newArray->elementType = declared;
 
@@ -344,8 +342,7 @@ VOID *LdrLoadArgument(struct IMAGE_LOADER *thisPtr)
             const INT32 arrayCount = LdrImageReadIndex(thisPtr);
             const INT32 value = LdrImageReadIndex(thisPtr);
 
-            struct MANAGED_ARRAY *newArray = HpAllocateNative(sizeof(struct MANAGED_ARRAY));
-            newArray->int32 = HpAllocateNative(sizeof(INT32) * arrayCount);
+            struct MANAGED_ARRAY *newArray = ObManagedArrayInitialize(arrayCount,sizeof(INT32));
             newArray->header.type = ExDomainLocateType(thisPtr->domain, "System.Int32[]");
             newArray->elementType = declared;
             newArray->int32[arrayCount - 1] = value;
@@ -422,12 +419,11 @@ VOID LdrExecuteAttributesConstructors(struct DOMAIN *thisPtr)
                     struct MANAGED_STRING* string = HpAllocateManaged(sizeof(struct MANAGED_STRING));
                     string->header.type = ExStringType;
 
-                    struct MANAGED_ARRAY* array = HpAllocateManaged(sizeof(struct MANAGED_ARRAY));
+                    struct MANAGED_ARRAY* array = ObManagedArrayInitialize(arg->length,sizeof(WCHAR));
                     array->elementType = ExCharType;
                     array->header.type = ExCharArrayType;
-
                     array->count = arg->length;
-                    array->characters = HpAllocateNative(sizeof(WCHAR)*array->count);
+
                     PalMemoryCopy(array->characters,arg->characters,sizeof(WCHAR)*array->count);
 
                     string->characters = array;
@@ -495,12 +491,11 @@ VOID LdrExecuteAttributesConstructors(struct DOMAIN *thisPtr)
                         struct MANAGED_STRING* string = HpAllocateManaged(sizeof(struct MANAGED_STRING));
                         string->header.type = ExStringType;
 
-                        struct MANAGED_ARRAY* array = HpAllocateManaged(sizeof(struct MANAGED_ARRAY));
+                        struct MANAGED_ARRAY* array = ObManagedArrayInitialize(arg->length,sizeof(WCHAR));
                         array->elementType = ExCharType;
                         array->header.type = ExCharArrayType;
-
                         array->count = arg->length;
-                        array->characters = HpAllocateNative(sizeof(WCHAR)*array->count);
+
                         PalMemoryCopy(array->characters,arg->characters,sizeof(WCHAR)*array->count);
 
                         string->characters = array;
@@ -569,12 +564,11 @@ VOID LdrExecuteAttributesConstructors(struct DOMAIN *thisPtr)
                         struct MANAGED_STRING* string = HpAllocateManaged(sizeof(struct MANAGED_STRING));
                         string->header.type = ExStringType;
 
-                        struct MANAGED_ARRAY* array = HpAllocateManaged(sizeof(struct MANAGED_ARRAY));
+                        struct MANAGED_ARRAY* array = ObManagedArrayInitialize(arg->length,sizeof(WCHAR));
                         array->elementType = ExCharType;
                         array->header.type = ExCharArrayType;
-
                         array->count = arg->length;
-                        array->characters = HpAllocateNative(sizeof(WCHAR)*array->count);
+
                         PalMemoryCopy(array->characters,arg->characters,sizeof(WCHAR)*array->count);
 
                         string->characters = array;
@@ -640,6 +634,24 @@ VOID LdrCalculateTypeSizes(struct DOMAIN *thisPtr)
         struct TYPE *type = RtlVectorGet(&thisPtr->types, i);
 
         type->size = LdrCalculateTypeSize(type);
+    }
+}
+
+VOID LdrFillTypeInfo(struct DOMAIN *thisPtr)
+{
+    for (int i = 0; i < thisPtr->types.count; ++i)
+    {
+        struct TYPE *type = RtlVectorGet(&thisPtr->types, i);
+
+        for (int j = 0; j < type->methods.count; ++j)
+        {
+            struct METHOD* method = RtlVectorGet(&type->methods,j);
+
+            if (RtlNStringCompare(method->shortName,"Finalize"))
+            {
+                type->hasFinalizer = TRUE;
+            }
+        }
     }
 }
 
@@ -848,6 +860,7 @@ struct DOMAIN *LdrLoadDomain(struct IMAGE_LOADER *thisPtr)
     // HpFreeNative(stringTable);
 
     LdrCalculateTypeSizes(domain);
+    LdrFillTypeInfo(domain);
 
     return domain;
 }

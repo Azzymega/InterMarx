@@ -1,10 +1,38 @@
+#include <stdatomic.h>
 #include <stdio.h>
 #include <pal/pal.h>
 #include <windows.h>
 #include <ex/runtime.h>
 #include <mt/mt.h>
 
+INUGLOBAL BOOLEAN PalGlobalMaintainence;
+INUGLOBAL MONITOR PalGlobalMaintainenceBump;
+
 extern VOID MxDumpStackTrace(struct EXCEPTION_STATE* state);
+
+VOID PalEnterLock(INUVOLATILE BOOLEAN* monitor)
+{
+    while (atomic_flag_test_and_set_explicit((struct atomic_flag*)monitor, memory_order_acquire))
+    {
+        asm("pause");
+    }
+}
+
+VOID PalExitLock(INUVOLATILE BOOLEAN* monitor)
+{
+    atomic_flag_clear_explicit((struct atomic_flag*)monitor, memory_order_release);
+}
+
+BOOLEAN PalTryEnterLock(INUVOLATILE BOOLEAN* monitor)
+{
+    return !atomic_flag_test_and_set_explicit((struct atomic_flag*)monitor, memory_order_acquire);
+}
+
+void PalInitialize()
+{
+    PalMonitorInitialize(&PalGlobalMaintainenceBump);
+    PalGlobalMaintainence = FALSE;
+}
 
 void PalDebugbreak(const CHAR *message)
 {
@@ -90,6 +118,34 @@ VOID PalThreadResume(NATIVE_HANDLE thread)
 VOID PalThreadSuspend(NATIVE_HANDLE thread)
 {
     SuspendThread((HANDLE)thread);
+}
+
+void PalEnterMaintainenceMode()
+{
+    PalMonitorEnter(&PalGlobalMaintainenceBump);
+
+    PalGlobalMaintainence = TRUE;
+}
+
+void PalExitMaintainenceMode()
+{
+    PalMonitorExit(&PalGlobalMaintainenceBump);
+
+    PalGlobalMaintainence = FALSE;
+}
+
+void PalSafepoint()
+{
+    if (PalGlobalMaintainence)
+    {
+        struct THREAD* current = MtThreadGetCurrent();
+        current->inSafePoint = TRUE;
+
+        PalMonitorEnter(&PalGlobalMaintainenceBump);
+        PalMonitorExit(&PalGlobalMaintainenceBump);
+
+        current->inSafePoint = FALSE;
+    }
 }
 
 void PalThreadExitCurrent(UINTPTR code)
