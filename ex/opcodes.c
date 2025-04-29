@@ -3,21 +3,6 @@
 #include <pal/pal.h>
 #include <math.h>
 
-struct FRAME_BLOCK ExPeek(struct FRAME *frame)
-{
-    return frame->stack[frame->sp - 1];
-}
-
-struct FRAME_BLOCK ExPop(struct FRAME *frame)
-{
-    return frame->stack[--frame->sp];
-}
-
-VOID ExPush(struct FRAME *frame, struct FRAME_BLOCK block)
-{
-    frame->stack[frame->sp++] = block;
-}
-
 VOID* ExGetPoolElement(struct READER *reader, struct FRAME *frame)
 {
     UINT32 index = RtlReaderReadInt32(reader);

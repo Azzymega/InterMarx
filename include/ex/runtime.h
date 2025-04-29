@@ -14,7 +14,7 @@ INUSTATIC const char* const ExIndexOutOfRangeName = "System.IndexOutOfRangeExcep
 
 MARX_STATUS ExInitialize();
 
-MARX_STATUS ExMethodPrologueDelegate(struct MANAGED_DELEGATE* delegate, struct FRAME_BLOCK* args, struct FRAME* previous, struct FRAME_BLOCK* returnValue);
+MARX_STATUS ExMethodPrologueDelegate(struct FRAME_BLOCK* delegate, struct FRAME_BLOCK* args, struct FRAME* previous, struct FRAME_BLOCK* returnValue);
 
 MARX_STATUS ExMethodPrologueArgs(struct METHOD* method, struct FRAME_BLOCK* args, struct FRAME* previous, struct FRAME_BLOCK* returnValue);
 MARX_STATUS ExMethodPrologueCtor(struct METHOD* method, struct FRAME* previous, VOID* ptr, struct FRAME_BLOCK* returnValue);
@@ -30,7 +30,7 @@ MARX_STATUS ExThrowException(struct MANAGED_EXCEPTION* exception);
 MARX_STATUS ExHandleException(struct MANAGED_EXCEPTION** exception);
 MARX_STATUS ExLocateHandler(struct HANDLER* handler, struct FRAME *frame);
 MARX_STATUS ExLocateFinally(struct HANDLER* handler, struct FRAME *frame);
-MARX_STATUS ExLocateVirtualMethod(struct OBJECT_HEADER* header, struct METHOD* method, struct METHOD** returnTarget);
+MARX_STATUS ExLocateVirtualMethod(struct FRAME_BLOCK *header, struct METHOD* method, struct METHOD** returnTarget);
 
 //
 //  Helpers

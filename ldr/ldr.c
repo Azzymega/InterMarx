@@ -253,11 +253,12 @@ VOID *LdrLoadAttribute(struct IMAGE_LOADER *thisPtr)
     enum EXECUTIVE_OWNER_DESCRIPTOR *descriptor = thisPtr->sections[LdrImageReadIndex(thisPtr)];
     struct TYPE *declared = thisPtr->sections[LdrImageReadIndex(thisPtr)];
 
-    struct MANAGED_ATTRIBUTE *attribute = HpAllocateNative(sizeof(struct MANAGED_ATTRIBUTE)+150); // TODO: BAD HACK! SCAN TYPE SIZES BEFORE LOADING ATTRIBUTES!
+    struct MANAGED_ATTRIBUTE *attribute = HpAllocateManaged(sizeof(struct MANAGED_ATTRIBUTE)+150); // TODO: BAD HACK! SCAN TYPE SIZES BEFORE LOADING ATTRIBUTES!
     ObManagedAttributeInitialize(attribute);
 
     attribute->owner = descriptor;
     attribute->header.type = declared;
+    attribute->header.interop = TRUE;
     attribute->ctor = thisPtr->sections[LdrImageReadIndex(thisPtr)];
 
     switch (*descriptor)

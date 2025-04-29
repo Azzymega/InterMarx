@@ -272,7 +272,7 @@ struct THREAD
     struct EXCEPTION_STATE state;
 
     struct MANAGED_WRAPPER* wrapper;
-    struct MANAGED_DELEGATE delegate;
+    struct MANAGED_DELEGATE* delegate;
 
     struct FRAME* currentFrame;
     struct FRAME* firstFrame;

@@ -13,7 +13,8 @@ struct OBJECT_HEADER
 
     UINTPTR interop : 1;
     UINTPTR managedWrapper : 1;
-    UINTPTR reserved : 30;
+    UINTPTR array : 1;
+    UINTPTR reserved : 29;
 
     enum GC_COLOR color;
     VOID* forward;
@@ -28,15 +29,15 @@ struct INUMANAGED INUPACKED MANAGED_ARRAY
 
     union
     {
-        VOID **pointer;
-        INTPTR *nint;
-        INT32 *int32;
-        INT64 *int64;
-        INT16 *int16;
-        SINGLE *single;
-        DOUBLE *duoble;
-        BYTE *byte;
-        WCHAR *characters;
+        VOID *pointer[0];
+        INTPTR nint[0];
+        INT32 int32[0];
+        INT64 int64[0];
+        INT16 int16[0];
+        SINGLE single[0];
+        DOUBLE duoble[0];
+        BYTE byte[0];
+        WCHAR characters[0];
     };
 };
 

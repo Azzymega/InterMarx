@@ -4,9 +4,8 @@
 void * ObManagedArrayInitialize(UINTPTR elementCount, UINTPTR elementSize)
 {
     struct MANAGED_ARRAY* array = HpAllocateManaged(sizeof(struct MANAGED_ARRAY)+(elementCount*elementSize));
-    VOID* infoOffset = array;
-    infoOffset += sizeof(struct MANAGED_ARRAY);
-    array->byte = infoOffset;
+    array->header.array = TRUE;
+    array->count = elementCount;
     return array;
 }
 

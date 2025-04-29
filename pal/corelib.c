@@ -20,13 +20,17 @@ VOID PalManagedThreadCreate(struct MANAGED_WRAPPER *thread, struct MANAGED_DELEG
     thread->fixUpAddress = &target->wrapper;
     thread->handle = (NATIVE_HANDLE)target;
 
-    target->delegate = *delegate;
+    target->delegate = delegate;
     target->handle = PalThreadCreate(PalThreadBootstrap,&target->delegate);
     target->id = GetThreadId((HANDLE)target->handle);
 
-    for (int i = 0; i < target->delegate.thisObjects->count; ++i)
+    delegate->header.interop = TRUE;
+    delegate->callSites->header.interop = TRUE;
+    delegate->thisObjects->header.interop = TRUE;
+
+    for (int i = 0; i < target->delegate->thisObjects->count; ++i)
     {
-        struct OBJECT_HEADER* header = target->delegate.thisObjects->pointer[i];
+        struct OBJECT_HEADER* header = target->delegate->thisObjects->pointer[i];
 
         if (header != NULL)
         {
@@ -39,12 +43,12 @@ INT32 PalManagedThreadStart(struct MANAGED_WRAPPER *thread)
 {
     const struct THREAD* target = (struct THREAD*)thread->handle;
 
-    if (target->delegate.thisObjects == NULL || target->delegate.callSites == NULL)
+    if (target->delegate->thisObjects == NULL || target->delegate->callSites == NULL)
     {
         return FALSE;
     }
 
-    if (target->delegate.callSites->count == 0)
+    if (target->delegate->callSites->count == 0)
     {
         return FALSE;
     }
@@ -88,9 +92,6 @@ struct MANAGED_DELEGATE * PalManagedDelegateRemoveImplNative(struct MANAGED_DELE
         UINTPTR presentCount = 0;
         UINTPTR counter = 0;
 
-        struct MANAGED_DELEGATE* newDelegate = HpAllocateManaged(sizeof(struct MANAGED_DELEGATE));
-        newDelegate->header.type = thisPtr->header.type;
-
         VOID* objects[thisCount];
         VOID* callSites[thisCount];
 
@@ -118,6 +119,14 @@ struct MANAGED_DELEGATE * PalManagedDelegateRemoveImplNative(struct MANAGED_DELE
                 presentCount++;
             }
         }
+
+        if (presentCount == 0)
+        {
+            return NULL;
+        }
+
+        struct MANAGED_DELEGATE* newDelegate = HpAllocateManaged(sizeof(struct MANAGED_DELEGATE));
+        newDelegate->header.type = thisPtr->header.type;
 
         VOID* finalObjects[presentCount];
         VOID* finalCallSites[presentCount];

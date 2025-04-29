@@ -42,7 +42,12 @@ void PalDebugbreak(const CHAR *message)
 UINTPTR PalThreadBootstrap(void *arg)
 {
     struct FRAME_BLOCK ret;
-    if (MARX_SUCCESS(ExMethodPrologueDelegate(arg,NULL,NULL,&ret)))
+    struct FRAME_BLOCK delegate;
+
+    delegate.type = MACHINE_OBJECT;
+    delegate.descriptor = arg;
+
+    if (MARX_SUCCESS(ExMethodPrologueDelegate(&delegate,NULL,NULL,&ret)))
     {
         return ret.int32;
     }

@@ -73,11 +73,6 @@ VOID* HppTransferObject(struct OBJECT_HEADER* header)
         return header->forward;
     }
 
-    if (RtlNStringCompare(header->type->shortName,"StringBuilder"))
-    {
-        fflush(stdout);
-    }
-
     UINTPTR size = header->size;
     VOID* newPtr = HpManagedHeapAllocate(&HpGlobalNextManagedHeap,size);
     header->forward = newPtr;
@@ -114,9 +109,38 @@ VOID* HppTraceObject(struct OBJECT_HEADER* header)
     {
         return header->forward;
     }
+    else if (header->array == TRUE)
+    {
+        struct MANAGED_ARRAY* array = (struct MANAGED_ARRAY*)header;
+        if (array->elementType->inlined == BASE_OTHER)
+        {
+            for (int i = 0; i < array->count; ++i)
+            {
+                array->pointer[i] = HppTransferObject(array->pointer[i]);
+            }
+        }
+
+        if (header->forward == NULL)
+        {
+            struct OBJECT_HEADER* relocPtr = HppTransferObject(header);
+            relocPtr->color = GC_BLACK;
+            header->color = GC_BLACK;
+            return relocPtr;
+        }
+        else
+        {
+            header->color = GC_BLACK;
+            return header->forward;
+        }
+    }
     else
     {
         struct TYPE* objectType = header->type;
+
+        if (ExMetadataIs(objectType->metadata,MxExMetadataDelegate))
+        {
+            objectType = objectType->super->super;
+        }
 
         for (int i = 0; i < objectType->fields.count; ++i)
         {
@@ -259,7 +283,6 @@ struct MANAGED_HEAP* HpGc()
     PalEnterMaintainenceMode();
     HppWaitSafepoint();
 
-
     for (int i = 0; i < HpGlobalRootFieldList.count; ++i)
     {
         struct FIELD* field = RtlVectorGet(&HpGlobalRootFieldList,i);
@@ -331,7 +354,9 @@ struct MANAGED_HEAP* HpGc()
     oldHeap.current = oldHeap.start;
     oldHeap.objectCount = 0;
 
-    HpGlobalManagedHeap = HpGlobalNextManagedHeap;
+    struct MANAGED_HEAP* newHeap = &HpGlobalNextManagedHeap;
+
+    HpGlobalManagedHeap = *newHeap;
     HpGlobalNextManagedHeap = oldHeap;
 
     PalMemoryZero(oldHeap.start,oldHeap.size);
@@ -343,9 +368,9 @@ struct MANAGED_HEAP* HpGc()
 
 VOID HpManagedHeapInitialize(struct MANAGED_HEAP *thisPtr)
 {
-    thisPtr->current = PalMemoryAllocate(1024*1024*2);
-    thisPtr->start = thisPtr->current;
-    thisPtr->size = 1024*1024*2;
+    thisPtr->start = PalMemoryAllocate(1024*26);
+    thisPtr->current = thisPtr->start;
+    thisPtr->size = 1024*26;
     PalMonitorInitialize(&thisPtr->lock);
 }
 
@@ -358,10 +383,8 @@ VOID* HpManagedHeapAllocate(struct MANAGED_HEAP *thisPtr, UINTPTR size)
             struct MANAGED_HEAP* oldHeap = thisPtr;
             struct MANAGED_HEAP* newHeap = HpGc();
 
-            printf("%s","\r\nGC IN PROGRESS!!!\r\n");
-
-            PalExitLock(&oldHeap->isGcInProgress);
-            PalExitLock(&newHeap->isGcInProgress);
+            PalExitLock(&HpGlobalNextManagedHeap.isGcInProgress);
+            PalExitLock(&HpGlobalManagedHeap.isGcInProgress);
         }
         else
         {

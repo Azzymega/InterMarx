@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <ex/runtime.h>
 #include <ex/ex.h>
 #include <hp/hp.h>
@@ -46,37 +47,101 @@ MARX_STATUS ExInitialize()
     return STATUS_SUCCESS;
 }
 
-MARX_STATUS ExMethodPrologueDelegate(struct MANAGED_DELEGATE *delegate, struct FRAME_BLOCK *args,
+INUFORCEINLINE struct FRAME_BLOCK ExPeek(struct FRAME *frame)
+{
+    return frame->stack[frame->sp - 1];
+}
+
+INUFORCEINLINE struct FRAME_BLOCK ExPop(struct FRAME *frame)
+{
+    return frame->stack[--frame->sp];
+}
+
+INUFORCEINLINE VOID ExPush(struct FRAME *frame, struct FRAME_BLOCK block)
+{
+    frame->stack[frame->sp++] = block;
+}
+
+INUFORCEINLINE MARX_STATUS ExNullCheck(struct FRAME_BLOCK block)
+{
+    switch (block.type)
+    {
+        case MACHINE_OBJECT:
+        {
+            if (block.descriptor == NULL)
+            {
+                return STATUS_FAIL;
+            }
+            else
+            {
+                return STATUS_SUCCESS;
+            }
+        }
+        case MACHINE_MANAGED_POINTER:
+        {
+            if (block.link.pointer == NULL)
+            {
+                return STATUS_FAIL;
+            }
+            else
+            {
+                return STATUS_SUCCESS;
+            }
+        }
+        case MACHINE_INTPTR:
+        {
+            if (block.pointer == (INTPTR) NULL)
+            {
+                return STATUS_FAIL;
+            }
+            else
+            {
+                return STATUS_SUCCESS;
+            }
+        }
+        default:
+        {
+            return STATUS_FAIL;
+        }
+    }
+}
+
+MARX_STATUS ExMethodPrologueDelegate(struct FRAME_BLOCK *delegate, struct FRAME_BLOCK *args,
                                      struct FRAME *previous, struct FRAME_BLOCK *returnValue)
 {
     struct FRAME frame;
     struct FRAME_BLOCK ret;
 
-    if (delegate == NULL)
+    if (delegate->descriptor == NULL)
     {
         return STATUS_FAIL;
     }
 
-    for (int t = 0; t < delegate->callSites->count; ++t)
+    struct METHOD *signatureMethod = ((struct MANAGED_DELEGATE *) delegate->descriptor)->callSites->pointer[0];
+    struct FRAME_BLOCK localArgs[signatureMethod->parameters.count + 1];
+
+    if (previous != NULL)
     {
-        struct METHOD *method = delegate->callSites->pointer[t];
+        for (int i = signatureMethod->parameters.count - 1; i >= 1; --i)
+        {
+            localArgs[i] = ExPop(previous);
+        }
+    }
+
+    for (int t = 0; t < ((struct MANAGED_DELEGATE *) delegate->descriptor)->callSites->count; ++t)
+    {
+        struct METHOD *method = ((struct MANAGED_DELEGATE *) delegate->descriptor)->callSites->pointer[t];
 
         if (method == NULL)
         {
             return STATUS_FAIL;
         }
 
-        struct FRAME_BLOCK localArgs[method->parameters.count+1];
 
         if (args == NULL)
         {
-            for (int i = method->parameters.count - 1; i >= 1; --i)
-            {
-                localArgs[i] = ExPop(previous);
-            }
-
             localArgs[0].type = MACHINE_OBJECT;
-            localArgs[0].descriptor = delegate->thisObjects->pointer[t];
+            localArgs[0].descriptor = ((struct MANAGED_DELEGATE *) delegate->descriptor)->thisObjects->pointer[t];
 
             frame.args = localArgs;
         }
@@ -86,10 +151,9 @@ MARX_STATUS ExMethodPrologueDelegate(struct MANAGED_DELEGATE *delegate, struct F
         }
 
 
-        UINTPTR stackSize = method->variables.count+method->parameters.count+20;
+        UINTPTR stackSize = method->variables.count + method->parameters.count + 20;
 
-        frame.stack = PalStackBufferAllocate(stackSize,
-                                             sizeof(struct FRAME_BLOCK));
+        frame.stack = PalStackBufferAllocate(stackSize, sizeof(struct FRAME_BLOCK));
         frame.sp = 0;
         frame.maxStack = stackSize;
 
@@ -170,7 +234,7 @@ MARX_STATUS ExMethodPrologueArgs(struct METHOD *method, struct FRAME_BLOCK *args
         frame.args = args;
     }
 
-    UINTPTR stackSize = method->variables.count+method->parameters.count+20;
+    UINTPTR stackSize = method->variables.count + method->parameters.count + 20;
 
     frame.stack = PalStackBufferAllocate(stackSize,
                                          sizeof(struct FRAME_BLOCK));
@@ -245,10 +309,10 @@ MARX_STATUS ExMethodPrologueCtor(struct METHOD *method, struct FRAME *previous, 
     {
         args[i] = ExPop(previous);
     }
-    ExPush(previous,thisPtr);
+    ExPush(previous, thisPtr);
 
     frame.args = args;
-    UINTPTR stackSize = method->variables.count+method->parameters.count+20;
+    UINTPTR stackSize = method->variables.count + method->parameters.count + 20;
 
     frame.stack = PalStackBufferAllocate(stackSize,
                                          sizeof(struct FRAME_BLOCK));
@@ -371,7 +435,7 @@ MARX_STATUS ExMethodPrologueCtorNative(struct METHOD *method, struct FRAME *prev
     {
         args[i] = ExPop(previous);
     }
-    ExPush(previous,thisPtr);
+    ExPush(previous, thisPtr);
 
     frame.args = args;
     frame.sp = 0;
@@ -511,9 +575,27 @@ MARX_STATUS ExLocateFinally(struct HANDLER *handler, struct FRAME *frame)
     }
 }
 
-MARX_STATUS ExLocateVirtualMethod(struct OBJECT_HEADER *header, struct METHOD *method, struct METHOD **returnTarget)
+MARX_STATUS ExLocateVirtualMethod(struct FRAME_BLOCK *header, struct METHOD *method, struct METHOD **returnTarget)
 {
-    struct TYPE *objectType = header->type;
+    struct TYPE *objectType = NULL;
+
+    if (header->type == MACHINE_OBJECT)
+    {
+        if (ExMetadataIs(method->owner->metadata, MxExMetadataStruct) && !ExMetadataIs(
+                method->metadata,
+                MxExMetadataStatic))
+        {
+            return STATUS_FAIL;
+        }
+        else
+        {
+            objectType = ((struct OBJECT_HEADER *) header->descriptor)->type;
+        }
+    }
+    else if (header->type == MACHINE_MANAGED_POINTER)
+    {
+        objectType = header->link.type;
+    }
 
     if (objectType == NULL || method == NULL)
     {
@@ -533,8 +615,8 @@ MARX_STATUS ExLocateVirtualMethod(struct OBJECT_HEADER *header, struct METHOD *m
                     BOOLEAN fail = FALSE;
                     for (int t = 1; t < targetMethod->parameters.count; ++t)
                     {
-                        struct TYPE* firstParameter = RtlVectorGet(&targetMethod->parameters,t);
-                        struct TYPE* secondParameter = RtlVectorGet(&method->parameters,t);
+                        struct TYPE *firstParameter = RtlVectorGet(&targetMethod->parameters, t);
+                        struct TYPE *secondParameter = RtlVectorGet(&method->parameters, t);
 
                         if (firstParameter != secondParameter)
                         {
@@ -564,50 +646,6 @@ MARX_STATUS ExLocateVirtualMethod(struct OBJECT_HEADER *header, struct METHOD *m
     }
 
     return STATUS_FAIL;
-}
-
-MARX_STATUS ExNullCheck(struct FRAME_BLOCK block)
-{
-    switch (block.type)
-    {
-        case MACHINE_OBJECT:
-        {
-            if (block.descriptor == NULL)
-            {
-                return STATUS_FAIL;
-            }
-            else
-            {
-                return STATUS_SUCCESS;
-            }
-        }
-        case MACHINE_MANAGED_POINTER:
-        {
-            if (block.link.pointer == NULL)
-            {
-                return STATUS_FAIL;
-            }
-            else
-            {
-                return STATUS_SUCCESS;
-            }
-        }
-        case MACHINE_INTPTR:
-        {
-            if (block.pointer == (INTPTR) NULL)
-            {
-                return STATUS_FAIL;
-            }
-            else
-            {
-                return STATUS_SUCCESS;
-            }
-        }
-        default:
-        {
-            return STATUS_FAIL;
-        }
-    }
 }
 
 MARX_STATUS ExBoundCheck(struct FRAME_BLOCK block, UINTPTR accessIndex)
@@ -673,7 +711,7 @@ ExceptionHandlingZoneEnd:
 
     while (TRUE)
     {
-        enum BYTECODE bytecode = RtlReaderReadByte(&reader);
+        enum BYTECODE bytecode = ((BYTE *) reader.stream)[reader.offset++]; // RtlReaderReadByte(&reader);
 
         switch (bytecode)
         {
@@ -1322,7 +1360,7 @@ ExceptionHandlingZoneEnd:
                 struct FRAME_BLOCK value = ExPop(frame);
                 struct FRAME_BLOCK source = ExPop(frame);
 
-                struct OBJECT_HEADER* objData = source.descriptor;
+                struct OBJECT_HEADER *objData = source.descriptor;
 
                 if (MARX_FAIL(ExNullCheck(source)))
                 {
@@ -1564,12 +1602,19 @@ ExceptionHandlingZoneEnd:
             case OpLoadString:
             {
                 INT32 index = RtlReaderReadInt32(&reader);
-                struct NSTRING* ptr = RtlVectorGet(&frame->method->stringTable, index);
+                struct NSTRING *ptr = RtlVectorGet(&frame->method->stringTable, index);
 
                 struct MANAGED_STRING *string = HpAllocateManaged(sizeof(struct MANAGED_STRING));
                 string->header.type = ExStringType;
 
-                struct MANAGED_ARRAY *array = ObManagedArrayInitialize(ptr->length,sizeof(WCHAR));
+                struct FRAME_BLOCK block = {
+                    .type = MACHINE_OBJECT,
+                    .descriptor = string
+                };
+
+                ExPush(frame, block);
+
+                struct MANAGED_ARRAY *array = ObManagedArrayInitialize(ptr->length, sizeof(WCHAR));
 
                 array->elementType = ExCharType;
                 array->header.type = ExCharArrayType;
@@ -1577,13 +1622,8 @@ ExceptionHandlingZoneEnd:
 
                 PalMemoryCopy(array->characters, ptr->characters, sizeof(WCHAR) * array->count);
 
+                string = ExPeek(frame).descriptor;
                 string->characters = array;
-                struct FRAME_BLOCK block = {
-                    .type = MACHINE_OBJECT,
-                    .descriptor = string
-                };
-
-                ExPush(frame, block);
                 break;
             }
             case OpLoadMethodDescriptor:
@@ -1609,9 +1649,7 @@ ExceptionHandlingZoneEnd:
                     goto ExceptionHandlingZone;
                 }
 
-                struct OBJECT_HEADER *header = obj.descriptor;
-
-                if (MARX_SUCCESS(ExLocateVirtualMethod(header,method,&virt)))
+                if (MARX_SUCCESS(ExLocateVirtualMethod(&obj,method,&virt)))
                 {
                     struct FRAME_BLOCK block;
                     block.type = MACHINE_INTPTR;
@@ -1638,11 +1676,11 @@ ExceptionHandlingZoneEnd:
 
                 if (ExMetadataIs(type->metadata, MxExMetadataStruct))
                 {
-                    managed = ObManagedArrayInitialize(slot.int32,type->size);
+                    managed = ObManagedArrayInitialize(slot.int32, type->size);
                 }
                 else
                 {
-                    managed = ObManagedArrayInitialize(slot.int32,sizeof(VOID*));
+                    managed = ObManagedArrayInitialize(slot.int32, sizeof(VOID *));
                 }
 
                 managed->header.type = arrayType;
@@ -1708,7 +1746,7 @@ ExceptionHandlingZoneEnd:
 
                 if (ExMetadataIs(ctor->metadata, MxExMetadataExtern))
                 {
-                    MARX_STATUS retInfo = ExMethodPrologueCtorNative(ctor,frame,instance,&ret);
+                    MARX_STATUS retInfo = ExMethodPrologueCtorNative(ctor, frame, instance, &ret);
                     if (MARX_FAIL(retInfo))
                     {
                         ExMethodEpilogue(frame);
@@ -1724,7 +1762,7 @@ ExceptionHandlingZoneEnd:
                 }
                 else
                 {
-                    MARX_STATUS retInfo = ExMethodPrologueCtor(ctor,frame,instance,&ret);
+                    MARX_STATUS retInfo = ExMethodPrologueCtor(ctor, frame, instance, &ret);
                     if (MARX_FAIL(retInfo))
                     {
                         ExMethodEpilogue(frame);
@@ -2433,10 +2471,16 @@ ExceptionHandlingZoneEnd:
                 PalSafepoint();
 
                 struct METHOD *target = ExGetPoolElement(&reader, frame);
-                struct OBJECT_HEADER *hed = frame->stack[frame->sp-target->parameters.count].descriptor; //ExPeek(frame).descriptor;
+                struct FRAME_BLOCK *hed = &frame->stack[frame->sp - target->parameters.count];
                 struct METHOD *virt;
                 struct FRAME_BLOCK ret;
                 MARX_STATUS state;
+
+                if (MARX_FAIL(ExNullCheck(*hed)))
+                {
+                    ExThrowException(&ExNullReference);
+                    goto ExceptionHandlingZone;
+                }
 
                 if (MARX_FAIL(ExLocateVirtualMethod(hed,target,&virt)) && !ExMetadataIs(target->owner->metadata,
                         MxExMetadataDelegate))
@@ -2449,8 +2493,9 @@ ExceptionHandlingZoneEnd:
                         virt->shortName,
                         "Invoke"))
                 {
+                    struct FRAME_BLOCK *frameInfo = &frame->stack[frame->sp - target->parameters.count];
+                    state = ExMethodPrologueDelegate(frameInfo,NULL, frame, &ret);
                     ExPop(frame);
-                    state = ExMethodPrologueDelegate((struct MANAGED_DELEGATE *) hed,NULL, frame, &ret);
                     ExMethodEpilogue(frame);
                 }
                 else if (ExMetadataIs(virt->metadata, MxExMetadataExtern))
