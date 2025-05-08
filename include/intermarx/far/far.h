@@ -1,9 +1,9 @@
 #pragma once
-#include <intermarx.h>
+#include <intermarx/intermarx.h>
 
-struct FRAME;
-struct DOMAIN;
-struct FRAME_BLOCK;
+struct RUNTIME_FRAME;
+struct RUNTIME_DOMAIN;
+struct RUNTIME_FRAME_BLOCK;
 
 enum FAR_CALL_SYMBOL_SOURCE
 {
@@ -41,6 +41,6 @@ struct FAR_IMPORT
     VOID* function;
 };
 
-MARX_STATUS FarInitialize(struct DOMAIN* domain);
+MARX_STATUS FarInitialize(struct RUNTIME_DOMAIN* domain);
 MARX_STATUS FarLoadArgument(void *argument, UINTPTR argumentSize, void *stack, UINTPTR *stackPtr);
-MARX_STATUS FarNativeMethodExecute(struct FRAME* frame, struct FRAME_BLOCK* returnValue);
+MARX_STATUS FarNativeMethodExecute(struct RUNTIME_FRAME* frame, struct RUNTIME_FRAME_BLOCK* returnValue);

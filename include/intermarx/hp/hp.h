@@ -1,8 +1,8 @@
 #pragma once
-#include <intermarx.h>
-#include <pal/pal.h>
+#include <intermarx/intermarx.h>
+#include <intermarx/pal/pal.h>
 
-struct FIELD;
+struct RUNTIME_FIELD;
 
 enum GC_COLOR
 {
@@ -30,7 +30,7 @@ VOID *HpAllocateNative(UINTPTR size);
 VOID *HpAllocateManaged(UINTPTR size);
 
 
-VOID HpRegisterRootField(struct FIELD *field);
+VOID HpRegisterRootField(struct RUNTIME_FIELD *field);
 struct MANAGED_HEAP* HpGc();
 
 

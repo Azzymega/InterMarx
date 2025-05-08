@@ -1,5 +1,5 @@
 #pragma once
-#include <intermarx.h>
+#include <intermarx/intermarx.h>
 
 struct VECTOR
 {

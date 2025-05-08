@@ -1,15 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <ex/runtime.h>
-#include <hp/hp.h>
-#include <ldr/ldr.h>
-#include <pal/pal.h>
-#include <pal/corelib.h>
-#include <mt/mt.h>
+#include <intermarx/ex/runtime.h>
+#include <intermarx/hp/hp.h>
+#include <intermarx/ldr/ldr.h>
+#include <intermarx/pal/pal.h>
+#include <intermarx/pal/corelib.h>
+#include <intermarx/mt/mt.h>
 // #include <sanitizer/asan_interface.h>
 
 
-INUGLOBAL struct DOMAIN* ExGlobalZeroDomain;
+INUGLOBAL struct RUNTIME_DOMAIN* ExGlobalZeroDomain;
 INUGLOBAL MONITOR ExGlobalStackTraceMonitor;
 
 VOID MxDumpStackTrace(struct EXCEPTION_STATE* state)
@@ -67,7 +67,7 @@ VOID MxStart(VOID* buffer)
 
     PalMonitorInitialize(&ExGlobalStackTraceMonitor);
 
-    struct DOMAIN* domain = LdrLoadDomain(&loader);
+    struct RUNTIME_DOMAIN* domain = LdrLoadDomain(&loader);
     ExGlobalZeroDomain = domain;
 
     ExInitialize();
@@ -78,8 +78,8 @@ VOID MxStart(VOID* buffer)
 
     FarInitialize(domain);
 
-    struct TYPE* getType = ExDomainLocateType(domain, "Internationale.Runtime.Initializer");
-    struct METHOD* method = ExTypeLocateMethod(getType, "Initialize");
+    struct RUNTIME_TYPE* getType = ExDomainLocateType(domain, "Internationale.Runtime.Initializer");
+    struct RUNTIME_METHOD* method = ExTypeLocateMethod(getType, "Initialize");
 
     if (MARX_SUCCESS(ExMethodPrologue(method)))
     {

@@ -1,9 +1,7 @@
 #include <stdatomic.h>
-#include <stdio.h>
-#include <pal/pal.h>
-#include <windows.h>
-#include <ex/runtime.h>
-#include <mt/mt.h>
+#include <intermarx/pal/pal.h>
+#include <intermarx/ex/runtime.h>
+#include <intermarx/mt/mt.h>
 
 INUGLOBAL BOOLEAN PalGlobalMaintainence;
 INUGLOBAL MONITOR PalGlobalMaintainenceBump;
@@ -41,8 +39,8 @@ void PalDebugbreak(const CHAR *message)
 
 UINTPTR PalThreadBootstrap(void *arg)
 {
-    struct FRAME_BLOCK ret;
-    struct FRAME_BLOCK delegate;
+    struct RUNTIME_FRAME_BLOCK ret;
+    struct RUNTIME_FRAME_BLOCK delegate;
 
     delegate.type = MACHINE_OBJECT;
     delegate.descriptor = arg;
@@ -61,7 +59,7 @@ UINTPTR PalThreadBootstrap(void *arg)
 
 VOID * PalMemoryAllocate(UINTPTR count)
 {
-    return malloc(count);
+    return calloc(1,count);
 }
 
 VOID PalMemoryFree(VOID *memory)
@@ -112,7 +110,7 @@ UINTPTR PalThreadGetCurrentId()
 
 NATIVE_HANDLE PalThreadCreate(THREAD_LAUNCH delegate, VOID *argument)
 {
-    return (NATIVE_HANDLE)CreateThread(NULL,0,(VOID*)delegate,argument,CREATE_SUSPENDED,NULL);
+    return (NATIVE_HANDLE)CreateThread(0,0,(VOID*)delegate,argument,0,0);
 }
 
 VOID PalThreadResume(NATIVE_HANDLE thread)
@@ -123,6 +121,11 @@ VOID PalThreadResume(NATIVE_HANDLE thread)
 VOID PalThreadSuspend(NATIVE_HANDLE thread)
 {
     SuspendThread((HANDLE)thread);
+}
+
+UINTPTR PalThreadGetId(NATIVE_HANDLE thread)
+{
+    GetThreadId((HANDLE)thread);
 }
 
 void PalEnterMaintainenceMode()
@@ -143,7 +146,7 @@ void PalSafepoint()
 {
     if (PalGlobalMaintainence)
     {
-        struct THREAD* current = MtThreadGetCurrent();
+        struct RUNTIME_THREAD* current = MtThreadGetCurrent();
         current->inSafePoint = TRUE;
 
         PalMonitorEnter(&PalGlobalMaintainenceBump);
@@ -155,7 +158,7 @@ void PalSafepoint()
 
 void PalThreadExitCurrent(UINTPTR code)
 {
-    ExitThread(code);
+    while (TRUE);
 }
 
 void PalMonitorInitialize(MONITOR *monitor)

@@ -1,11 +1,11 @@
-#include <ex/ex.h>
-#include <mt/mt.h>
-#include <ob/ob.h>
-#include <pal/pal.h>
+#include <intermarx/ex/ex.h>
+#include <intermarx/mt/mt.h>
+#include <intermarx/ob/ob.h>
+#include <intermarx/pal/pal.h>
 
-INUIMPORT struct DOMAIN* ExGlobalZeroDomain;
+INUIMPORT struct RUNTIME_DOMAIN* ExGlobalZeroDomain;
 
-INUGLOBAL struct THREAD MtGlobalBootstrapThread;
+INUGLOBAL struct RUNTIME_THREAD MtGlobalBootstrapThread;
 INUGLOBAL struct VECTOR MtGlobalThreadList;
 
 VOID MtInitialize()
@@ -16,18 +16,18 @@ VOID MtInitialize()
     ExThreadInitialize(&MtGlobalBootstrapThread,ExGlobalZeroDomain);
 }
 
-VOID MtThreadRegister(struct THREAD *thread)
+VOID MtThreadRegister(struct RUNTIME_THREAD *thread)
 {
     RtlVectorAdd(&MtGlobalThreadList,thread);
 }
 
-struct THREAD * MtThreadGetCurrent()
+struct RUNTIME_THREAD * MtThreadGetCurrent()
 {
     UINTPTR id = PalThreadGetCurrentId();
 
     for (int i = 0; i < MtGlobalThreadList.count; ++i)
     {
-        struct THREAD* thread = RtlVectorGet(&MtGlobalThreadList,i);
+        struct RUNTIME_THREAD* thread = RtlVectorGet(&MtGlobalThreadList,i);
         if (thread->id == id)
         {
             return thread;

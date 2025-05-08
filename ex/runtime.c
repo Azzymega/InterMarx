@@ -1,19 +1,19 @@
 #include <stdio.h>
-#include <ex/runtime.h>
-#include <ex/ex.h>
-#include <hp/hp.h>
-#include <mt/mt.h>
-#include <ob/ob.h>
-#include <pal/pal.h>
+#include <intermarx/ex/runtime.h>
+#include <intermarx/ex/ex.h>
+#include <intermarx/hp/hp.h>
+#include <intermarx/mt/mt.h>
+#include <intermarx/ob/ob.h>
+#include <intermarx/pal/pal.h>
 
-INUIMPORT struct DOMAIN *ExGlobalZeroDomain;
+INUIMPORT struct RUNTIME_DOMAIN *ExGlobalZeroDomain;
 
 INUGLOBAL struct VECTOR ExGlobalDomainList;
 
-INUGLOBAL struct TYPE *ExStringType;
-INUGLOBAL struct TYPE *ExCharArrayType;
-INUGLOBAL struct TYPE *ExCharType;
-INUGLOBAL struct TYPE *ExThreadType;
+INUGLOBAL struct RUNTIME_TYPE *ExStringType;
+INUGLOBAL struct RUNTIME_TYPE *ExCharArrayType;
+INUGLOBAL struct RUNTIME_TYPE *ExCharType;
+INUGLOBAL struct RUNTIME_TYPE *ExThreadType;
 
 INUGLOBAL struct MANAGED_EXCEPTION ExExecutionEngineError;
 INUGLOBAL struct MANAGED_EXCEPTION ExNotImplemented;
@@ -44,25 +44,25 @@ MARX_STATUS ExInitialize()
     RtlVectorInitialize(&ExGlobalDomainList);
     RtlVectorAdd(&ExGlobalDomainList, ExGlobalZeroDomain);
 
-    return STATUS_SUCCESS;
+    return MARX_STATUS_SUCCESS;
 }
 
-INUFORCEINLINE struct FRAME_BLOCK ExPeek(struct FRAME *frame)
+INUFORCEINLINE struct RUNTIME_FRAME_BLOCK ExPeek(struct RUNTIME_FRAME *frame)
 {
     return frame->stack[frame->sp - 1];
 }
 
-INUFORCEINLINE struct FRAME_BLOCK ExPop(struct FRAME *frame)
+INUFORCEINLINE struct RUNTIME_FRAME_BLOCK ExPop(struct RUNTIME_FRAME *frame)
 {
     return frame->stack[--frame->sp];
 }
 
-INUFORCEINLINE VOID ExPush(struct FRAME *frame, struct FRAME_BLOCK block)
+INUFORCEINLINE VOID ExPush(struct RUNTIME_FRAME *frame, struct RUNTIME_FRAME_BLOCK block)
 {
     frame->stack[frame->sp++] = block;
 }
 
-INUFORCEINLINE MARX_STATUS ExNullCheck(struct FRAME_BLOCK block)
+INUFORCEINLINE MARX_STATUS ExNullCheck(struct RUNTIME_FRAME_BLOCK block)
 {
     switch (block.type)
     {
@@ -70,55 +70,66 @@ INUFORCEINLINE MARX_STATUS ExNullCheck(struct FRAME_BLOCK block)
         {
             if (block.descriptor == NULL)
             {
-                return STATUS_FAIL;
+                return MARX_STATUS_FAIL;
             }
             else
             {
-                return STATUS_SUCCESS;
+                return MARX_STATUS_SUCCESS;
             }
         }
         case MACHINE_MANAGED_POINTER:
         {
             if (block.link.pointer == NULL)
             {
-                return STATUS_FAIL;
+                return MARX_STATUS_FAIL;
             }
             else
             {
-                return STATUS_SUCCESS;
+                return MARX_STATUS_SUCCESS;
             }
         }
         case MACHINE_INTPTR:
         {
             if (block.pointer == (INTPTR) NULL)
             {
-                return STATUS_FAIL;
+                return MARX_STATUS_FAIL;
             }
             else
             {
-                return STATUS_SUCCESS;
+                return MARX_STATUS_SUCCESS;
+            }
+        }
+        case MACHINE_STRUCT:
+        {
+            if (block.valueType.pointer == NULL)
+            {
+                return MARX_STATUS_FAIL;
+            }
+            else
+            {
+                return MARX_STATUS_SUCCESS;
             }
         }
         default:
         {
-            return STATUS_FAIL;
+            return MARX_STATUS_FAIL;
         }
     }
 }
 
-MARX_STATUS ExMethodPrologueDelegate(struct FRAME_BLOCK *delegate, struct FRAME_BLOCK *args,
-                                     struct FRAME *previous, struct FRAME_BLOCK *returnValue)
+MARX_STATUS ExMethodPrologueDelegate(struct RUNTIME_FRAME_BLOCK *delegate, struct RUNTIME_FRAME_BLOCK *args,
+                                     struct RUNTIME_FRAME *previous, struct RUNTIME_FRAME_BLOCK *returnValue)
 {
-    struct FRAME frame;
-    struct FRAME_BLOCK ret;
+    struct RUNTIME_FRAME frame;
+    struct RUNTIME_FRAME_BLOCK ret;
 
     if (delegate->descriptor == NULL)
     {
-        return STATUS_FAIL;
+        return MARX_STATUS_FAIL;
     }
 
-    struct METHOD *signatureMethod = ((struct MANAGED_DELEGATE *) delegate->descriptor)->callSites->pointer[0];
-    struct FRAME_BLOCK localArgs[signatureMethod->parameters.count + 1];
+    struct RUNTIME_METHOD *signatureMethod = ((struct MANAGED_DELEGATE *) delegate->descriptor)->callSites->pointer[0];
+    struct RUNTIME_FRAME_BLOCK localArgs[signatureMethod->parameters.count + 1];
 
     if (previous != NULL)
     {
@@ -130,11 +141,11 @@ MARX_STATUS ExMethodPrologueDelegate(struct FRAME_BLOCK *delegate, struct FRAME_
 
     for (int t = 0; t < ((struct MANAGED_DELEGATE *) delegate->descriptor)->callSites->count; ++t)
     {
-        struct METHOD *method = ((struct MANAGED_DELEGATE *) delegate->descriptor)->callSites->pointer[t];
+        struct RUNTIME_METHOD *method = ((struct MANAGED_DELEGATE *) delegate->descriptor)->callSites->pointer[t];
 
         if (method == NULL)
         {
-            return STATUS_FAIL;
+            return MARX_STATUS_FAIL;
         }
 
 
@@ -153,17 +164,17 @@ MARX_STATUS ExMethodPrologueDelegate(struct FRAME_BLOCK *delegate, struct FRAME_
 
         UINTPTR stackSize = method->variables.count + method->parameters.count + 20;
 
-        frame.stack = PalStackBufferAllocate(stackSize, sizeof(struct FRAME_BLOCK));
+        frame.stack = PalStackBufferAllocate(stackSize, sizeof(struct RUNTIME_FRAME_BLOCK));
         frame.sp = 0;
         frame.maxStack = stackSize;
 
-        frame.variables = PalStackBufferAllocate(method->variables.count, sizeof(struct FRAME_BLOCK));
+        frame.variables = PalStackBufferAllocate(method->variables.count, sizeof(struct RUNTIME_FRAME_BLOCK));
 
-        PalMemoryZeroBlock(frame.variables, method->variables.count, sizeof(struct FRAME_BLOCK));
+        PalMemoryZeroBlock(frame.variables, method->variables.count, sizeof(struct RUNTIME_FRAME_BLOCK));
 
         for (int i = 0; i < method->variables.count; ++i)
         {
-            struct TYPE *variableType = RtlVectorGet(&method->variables, i);
+            struct RUNTIME_TYPE *variableType = RtlVectorGet(&method->variables, i);
             if (ExMetadataIs(variableType->metadata, MxExMetadataStruct) &&
                 !ExMetadataIs(variableType->metadata, MxExMetadataPrimitive))
             {
@@ -199,27 +210,27 @@ MARX_STATUS ExMethodPrologueDelegate(struct FRAME_BLOCK *delegate, struct FRAME_
         }
     }
 
-    return STATUS_SUCCESS;
+    return MARX_STATUS_SUCCESS;
 }
 
-MARX_STATUS ExMethodPrologue(struct METHOD *method)
+MARX_STATUS ExMethodPrologue(struct RUNTIME_METHOD *method)
 {
-    struct FRAME_BLOCK ret;
+    struct RUNTIME_FRAME_BLOCK ret;
     return ExMethodPrologueArgs(method,NULL,NULL, &ret);
 }
 
-MARX_STATUS ExMethodPrologueArgs(struct METHOD *method, struct FRAME_BLOCK *args, struct FRAME *previous,
-                                 struct FRAME_BLOCK *returnValue)
+MARX_STATUS ExMethodPrologueArgs(struct RUNTIME_METHOD *method, struct RUNTIME_FRAME_BLOCK *args, struct RUNTIME_FRAME *previous,
+                                 struct RUNTIME_FRAME_BLOCK *returnValue)
 {
-    struct FRAME frame;
-    struct FRAME_BLOCK ret;
+    struct RUNTIME_FRAME frame;
+    struct RUNTIME_FRAME_BLOCK ret;
 
     if (method == NULL)
     {
-        return STATUS_FAIL;
+        return MARX_STATUS_FAIL;
     }
 
-    struct FRAME_BLOCK localArgs[method->parameters.count];
+    struct RUNTIME_FRAME_BLOCK localArgs[method->parameters.count];
 
     if (args == NULL)
     {
@@ -237,17 +248,17 @@ MARX_STATUS ExMethodPrologueArgs(struct METHOD *method, struct FRAME_BLOCK *args
     UINTPTR stackSize = method->variables.count + method->parameters.count + 20;
 
     frame.stack = PalStackBufferAllocate(stackSize,
-                                         sizeof(struct FRAME_BLOCK));
+                                         sizeof(struct RUNTIME_FRAME_BLOCK));
     frame.sp = 0;
     frame.maxStack = stackSize;
 
-    frame.variables = PalStackBufferAllocate(method->variables.count, sizeof(struct FRAME_BLOCK));
+    frame.variables = PalStackBufferAllocate(method->variables.count, sizeof(struct RUNTIME_FRAME_BLOCK));
 
-    PalMemoryZeroBlock(frame.variables, method->variables.count, sizeof(struct FRAME_BLOCK));
+    PalMemoryZeroBlock(frame.variables, method->variables.count, sizeof(struct RUNTIME_FRAME_BLOCK));
 
     for (int i = 0; i < method->variables.count; ++i)
     {
-        struct TYPE *variableType = RtlVectorGet(&method->variables, i);
+        struct RUNTIME_TYPE *variableType = RtlVectorGet(&method->variables, i);
         if (ExMetadataIs(variableType->metadata, MxExMetadataStruct) &&
             !ExMetadataIs(variableType->metadata, MxExMetadataPrimitive))
         {
@@ -279,18 +290,18 @@ MARX_STATUS ExMethodPrologueArgs(struct METHOD *method, struct FRAME_BLOCK *args
     return status;
 }
 
-MARX_STATUS ExMethodPrologueCtor(struct METHOD *method, struct FRAME *previous, VOID *ptr,
-                                 struct FRAME_BLOCK *returnValue)
+MARX_STATUS ExMethodPrologueCtor(struct RUNTIME_METHOD *method, struct RUNTIME_FRAME *previous, VOID *ptr,
+                                 struct RUNTIME_FRAME_BLOCK *returnValue)
 {
-    struct FRAME frame;
-    struct FRAME_BLOCK ret;
+    struct RUNTIME_FRAME frame;
+    struct RUNTIME_FRAME_BLOCK ret;
 
     if (method == NULL)
     {
-        return STATUS_FAIL;
+        return MARX_STATUS_FAIL;
     }
 
-    struct FRAME_BLOCK args[method->parameters.count];
+    struct RUNTIME_FRAME_BLOCK args[method->parameters.count];
 
     if (ExMetadataIs(method->owner->metadata, MxExMetadataStruct))
     {
@@ -304,7 +315,7 @@ MARX_STATUS ExMethodPrologueCtor(struct METHOD *method, struct FRAME *previous, 
         args[0].descriptor = ptr;
     }
 
-    struct FRAME_BLOCK thisPtr = ExPop(previous);
+    struct RUNTIME_FRAME_BLOCK thisPtr = ExPop(previous);
     for (int i = method->parameters.count - 1; i >= 1; --i)
     {
         args[i] = ExPop(previous);
@@ -315,16 +326,16 @@ MARX_STATUS ExMethodPrologueCtor(struct METHOD *method, struct FRAME *previous, 
     UINTPTR stackSize = method->variables.count + method->parameters.count + 20;
 
     frame.stack = PalStackBufferAllocate(stackSize,
-                                         sizeof(struct FRAME_BLOCK));
+                                         sizeof(struct RUNTIME_FRAME_BLOCK));
     frame.sp = 0;
     frame.maxStack = stackSize;
-    frame.variables = PalStackBufferAllocate(method->variables.count, sizeof(struct FRAME_BLOCK));
+    frame.variables = PalStackBufferAllocate(method->variables.count, sizeof(struct RUNTIME_FRAME_BLOCK));
 
-    PalMemoryZeroBlock(frame.variables, method->variables.count, sizeof(struct FRAME_BLOCK));
+    PalMemoryZeroBlock(frame.variables, method->variables.count, sizeof(struct RUNTIME_FRAME_BLOCK));
 
     for (int i = 0; i < method->variables.count; ++i)
     {
-        struct TYPE *variableType = RtlVectorGet(&method->variables, i);
+        struct RUNTIME_TYPE *variableType = RtlVectorGet(&method->variables, i);
         if (ExMetadataIs(variableType->metadata, MxExMetadataStruct) &&
             !ExMetadataIs(variableType->metadata, MxExMetadataPrimitive))
         {
@@ -356,18 +367,18 @@ MARX_STATUS ExMethodPrologueCtor(struct METHOD *method, struct FRAME *previous, 
     return status;
 }
 
-MARX_STATUS ExMethodPrologueArgsNative(struct METHOD *method, struct FRAME_BLOCK *args, struct FRAME *previous,
-                                       struct FRAME_BLOCK *returnValue)
+MARX_STATUS ExMethodPrologueArgsNative(struct RUNTIME_METHOD *method, struct RUNTIME_FRAME_BLOCK *args, struct RUNTIME_FRAME *previous,
+                                       struct RUNTIME_FRAME_BLOCK *returnValue)
 {
-    struct FRAME frame;
-    struct FRAME_BLOCK ret;
+    struct RUNTIME_FRAME frame;
+    struct RUNTIME_FRAME_BLOCK ret;
 
     if (method == NULL)
     {
-        return STATUS_FAIL;
+        return MARX_STATUS_FAIL;
     }
 
-    struct FRAME_BLOCK localArgs[method->parameters.count];
+    struct RUNTIME_FRAME_BLOCK localArgs[method->parameters.count];
 
     if (args == NULL)
     {
@@ -405,18 +416,18 @@ MARX_STATUS ExMethodPrologueArgsNative(struct METHOD *method, struct FRAME_BLOCK
     return status;
 }
 
-MARX_STATUS ExMethodPrologueCtorNative(struct METHOD *method, struct FRAME *previous, VOID *ptr,
-                                       struct FRAME_BLOCK *returnValue)
+MARX_STATUS ExMethodPrologueCtorNative(struct RUNTIME_METHOD *method, struct RUNTIME_FRAME *previous, VOID *ptr,
+                                       struct RUNTIME_FRAME_BLOCK *returnValue)
 {
-    struct FRAME frame;
-    struct FRAME_BLOCK ret;
+    struct RUNTIME_FRAME frame;
+    struct RUNTIME_FRAME_BLOCK ret;
 
     if (method == NULL)
     {
-        return STATUS_FAIL;
+        return MARX_STATUS_FAIL;
     }
 
-    struct FRAME_BLOCK args[method->parameters.count];
+    struct RUNTIME_FRAME_BLOCK args[method->parameters.count];
 
     if (ExMetadataIs(method->owner->metadata, MxExMetadataStruct))
     {
@@ -430,7 +441,7 @@ MARX_STATUS ExMethodPrologueCtorNative(struct METHOD *method, struct FRAME *prev
         args[0].descriptor = ptr;
     }
 
-    struct FRAME_BLOCK thisPtr = ExPop(previous);
+    struct RUNTIME_FRAME_BLOCK thisPtr = ExPop(previous);
     for (int i = method->parameters.count - 1; i >= 1; --i)
     {
         args[i] = ExPop(previous);
@@ -463,41 +474,41 @@ MARX_STATUS ExMethodPrologueCtorNative(struct METHOD *method, struct FRAME *prev
 
 MARX_STATUS ExThrowException(struct MANAGED_EXCEPTION *exception)
 {
-    struct THREAD *thread = MtThreadGetCurrent();
+    struct RUNTIME_THREAD *thread = MtThreadGetCurrent();
 
     thread->state.exception = exception;
     thread->state.isUnwinding = TRUE;
 
-    return STATUS_SUCCESS;
+    return MARX_STATUS_SUCCESS;
 }
 
 MARX_STATUS ExHandleException(struct MANAGED_EXCEPTION **exception)
 {
-    struct THREAD *thread = MtThreadGetCurrent();
+    struct RUNTIME_THREAD *thread = MtThreadGetCurrent();
 
     *exception = thread->state.exception;
 
     thread->state.exception = NULL;
     thread->state.isUnwinding = FALSE;
 
-    return STATUS_SUCCESS;
+    return MARX_STATUS_SUCCESS;
 }
 
-MARX_STATUS ExLocateHandler(struct HANDLER *handler, struct FRAME *frame)
+MARX_STATUS ExLocateHandler(struct RUNTIME_EXCEPTION_HANDLER *handler, struct RUNTIME_FRAME *frame)
 {
-    struct THREAD *thread = MtThreadGetCurrent();
+    struct RUNTIME_THREAD *thread = MtThreadGetCurrent();
 
     INT32 pc = frame->reader->offset;
 
-    struct HANDLER *lowest = NULL;
+    struct RUNTIME_EXCEPTION_HANDLER *lowest = NULL;
     for (int i = 0; i < frame->method->handlers.count; ++i)
     {
-        struct HANDLER *source = RtlVectorGet(&frame->method->handlers, i);
+        struct RUNTIME_EXCEPTION_HANDLER *source = RtlVectorGet(&frame->method->handlers, i);
 
         if (source->handler == HANDLER_CATCH)
         {
             BOOLEAN casted = FALSE;
-            struct TYPE *exception = frame->thread->state.exception;
+            struct RUNTIME_TYPE *exception = frame->thread->state.exception;
 
             while (exception != NULL)
             {
@@ -529,23 +540,23 @@ MARX_STATUS ExLocateHandler(struct HANDLER *handler, struct FRAME *frame)
 
     if (lowest == NULL)
     {
-        return STATUS_FAIL;
+        return MARX_STATUS_FAIL;
     }
     else
     {
         *handler = *lowest;
-        return STATUS_SUCCESS;
+        return MARX_STATUS_SUCCESS;
     }
 }
 
-MARX_STATUS ExLocateFinally(struct HANDLER *handler, struct FRAME *frame)
+MARX_STATUS ExLocateFinally(struct RUNTIME_EXCEPTION_HANDLER *handler, struct RUNTIME_FRAME *frame)
 {
     INT32 pc = frame->reader->offset;
 
-    struct HANDLER *lowest = NULL;
+    struct RUNTIME_EXCEPTION_HANDLER *lowest = NULL;
     for (INT32 i = 0; i < frame->method->handlers.count; ++i)
     {
-        struct HANDLER *source = RtlVectorGet(&frame->method->handlers, i);
+        struct RUNTIME_EXCEPTION_HANDLER *source = RtlVectorGet(&frame->method->handlers, i);
 
         if (source->handler == HANDLER_FINALLY)
         {
@@ -567,17 +578,17 @@ MARX_STATUS ExLocateFinally(struct HANDLER *handler, struct FRAME *frame)
     if (lowest != NULL)
     {
         *handler = *lowest;
-        return STATUS_SUCCESS;
+        return MARX_STATUS_SUCCESS;
     }
     else
     {
-        return STATUS_FAIL;
+        return MARX_STATUS_FAIL;
     }
 }
 
-MARX_STATUS ExLocateVirtualMethod(struct FRAME_BLOCK *header, struct METHOD *method, struct METHOD **returnTarget)
+MARX_STATUS ExLocateVirtualMethod(struct RUNTIME_FRAME_BLOCK *header, struct RUNTIME_METHOD *method, struct RUNTIME_METHOD **returnTarget)
 {
-    struct TYPE *objectType = NULL;
+    struct RUNTIME_TYPE *objectType = NULL;
 
     if (header->type == MACHINE_OBJECT)
     {
@@ -585,7 +596,7 @@ MARX_STATUS ExLocateVirtualMethod(struct FRAME_BLOCK *header, struct METHOD *met
                 method->metadata,
                 MxExMetadataStatic))
         {
-            return STATUS_FAIL;
+            return MARX_STATUS_FAIL;
         }
         else
         {
@@ -599,14 +610,14 @@ MARX_STATUS ExLocateVirtualMethod(struct FRAME_BLOCK *header, struct METHOD *met
 
     if (objectType == NULL || method == NULL)
     {
-        return STATUS_FAIL;
+        return MARX_STATUS_FAIL;
     }
 
     while (objectType != NULL)
     {
         for (int i = 0; i < objectType->methods.count; ++i)
         {
-            struct METHOD *targetMethod = RtlVectorGet(&objectType->methods, i);
+            struct RUNTIME_METHOD *targetMethod = RtlVectorGet(&objectType->methods, i);
 
             if (RtlNStringCompareObject(targetMethod->shortName, method->shortName))
             {
@@ -615,8 +626,8 @@ MARX_STATUS ExLocateVirtualMethod(struct FRAME_BLOCK *header, struct METHOD *met
                     BOOLEAN fail = FALSE;
                     for (int t = 1; t < targetMethod->parameters.count; ++t)
                     {
-                        struct TYPE *firstParameter = RtlVectorGet(&targetMethod->parameters, t);
-                        struct TYPE *secondParameter = RtlVectorGet(&method->parameters, t);
+                        struct RUNTIME_TYPE *firstParameter = RtlVectorGet(&targetMethod->parameters, t);
+                        struct RUNTIME_TYPE *secondParameter = RtlVectorGet(&method->parameters, t);
 
                         if (firstParameter != secondParameter)
                         {
@@ -632,7 +643,7 @@ MARX_STATUS ExLocateVirtualMethod(struct FRAME_BLOCK *header, struct METHOD *met
                     else
                     {
                         *returnTarget = targetMethod;
-                        return STATUS_SUCCESS;
+                        return MARX_STATUS_SUCCESS;
                     }
                 }
                 else
@@ -645,37 +656,37 @@ MARX_STATUS ExLocateVirtualMethod(struct FRAME_BLOCK *header, struct METHOD *met
         objectType = objectType->super;
     }
 
-    return STATUS_FAIL;
+    return MARX_STATUS_FAIL;
 }
 
-MARX_STATUS ExBoundCheck(struct FRAME_BLOCK block, UINTPTR accessIndex)
+MARX_STATUS ExBoundCheck(struct RUNTIME_FRAME_BLOCK block, UINTPTR accessIndex)
 {
     struct MANAGED_ARRAY *array = block.descriptor;
 
     if (accessIndex >= array->count)
     {
-        return STATUS_FAIL;
+        return MARX_STATUS_FAIL;
     }
     else
     {
-        return STATUS_SUCCESS;
+        return MARX_STATUS_SUCCESS;
     }
 }
 
-MARX_STATUS ExMethodEpilogue(struct FRAME *frame)
+MARX_STATUS ExMethodEpilogue(struct RUNTIME_FRAME *frame)
 {
     if (frame == NULL)
     {
-        return STATUS_FAIL;
+        return MARX_STATUS_FAIL;
     }
 
     frame->next = NULL;
     frame->thread->currentFrame = frame;
 
-    return STATUS_SUCCESS;
+    return MARX_STATUS_SUCCESS;
 }
 
-MARX_STATUS ExMethodExecute(struct FRAME *frame, struct FRAME_BLOCK *returnValue)
+MARX_STATUS ExMethodExecute(struct RUNTIME_FRAME *frame, struct RUNTIME_FRAME_BLOCK *returnValue)
 {
     struct READER reader;
     RtlReaderInitialize(&reader, frame->method->bytecode);
@@ -685,20 +696,20 @@ MARX_STATUS ExMethodExecute(struct FRAME *frame, struct FRAME_BLOCK *returnValue
 
 ExceptionHandlingZone:
 
-    struct HANDLER handler;
+    struct RUNTIME_EXCEPTION_HANDLER handler;
     MARX_STATUS status = ExLocateHandler(&handler, frame);
 
     if (MARX_FAIL(status))
     {
         ExExceptionStateAppend(&MtThreadGetCurrent()->state, frame->method);
 
-        return STATUS_EXCEPTION;
+        return MARX_STATUS_EXCEPTION;
     }
     else
     {
         ExExceptionStateDrop(&MtThreadGetCurrent()->state);
 
-        struct FRAME_BLOCK exception;
+        struct RUNTIME_FRAME_BLOCK exception;
         exception.type = MACHINE_OBJECT;
 
         ExHandleException((struct MANAGED_EXCEPTION **) &exception.descriptor);
@@ -723,6 +734,7 @@ ExceptionHandlingZoneEnd:
             }
             case OpNoOperation:
             {
+                PalSafepoint();
                 break;
             }
             case OpDup:
@@ -737,122 +749,122 @@ ExceptionHandlingZoneEnd:
             }
             case OpAdd:
             {
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExAdd(first, second));
                 break;
             }
             case OpSub:
             {
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExSub(first, second));
                 break;
             }
             case OpMu:
             {
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExMul(first, second));
                 break;
             }
             case OpDiv:
             {
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExDiv(first, second));
                 break;
             }
             case OpRem:
             {
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExRem(first, second));
                 break;
             }
             case OpNeg:
             {
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExNeg(first));
                 break;
             }
             case OpAnd:
             {
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExAnd(first, second));
                 break;
             }
             case OpOr:
             {
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExOr(first, second));
                 break;
             }
             case OpXor:
             {
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExXor(first, second));
                 break;
             }
             case OpNot:
             {
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExNot(first));
                 break;
             }
             case OpShiftLeft:
             {
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExShl(first, second));
                 break;
             }
             case OpShiftRight:
             {
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExShr(first, second));
                 break;
             }
             case OpConvertI8:
             {
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExConvI8(first));
                 break;
             }
             case OpConvertI16:
             {
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExConvI16(first));
                 break;
             }
             case OpConvertI32:
             {
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExConvI32(first));
                 break;
             }
             case OpConvertI64:
             {
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExConvI64(first));
                 break;
@@ -860,21 +872,21 @@ ExceptionHandlingZoneEnd:
             case OpConvertDouble:
             case OpConvertFloat:
             {
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExConvMFloat(first));
                 break;
             }
             case OpConvertIntPtr:
             {
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 ExPush(frame, ExConvIntPtr(first));
                 break;
             }
             case OpLoadValueFieldAddress:
             {
-                struct FRAME_BLOCK value = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK value = ExPop(frame);
 
                 if (MARX_FAIL(ExNullCheck(value)))
                 {
@@ -908,10 +920,10 @@ ExceptionHandlingZoneEnd:
                     }
                 }
 
-                struct FIELD *field = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FIELD *field = ExGetPoolElement(&reader, frame);
                 rawPointer += field->offset;
 
-                struct FRAME_BLOCK block;
+                struct RUNTIME_FRAME_BLOCK block;
                 block.type = MACHINE_MANAGED_POINTER;
                 block.link.type = field->declared;
                 block.link.pointer = rawPointer;
@@ -923,7 +935,7 @@ ExceptionHandlingZoneEnd:
             {
                 INT32 index = RtlReaderReadInt32(&reader);
 
-                struct FRAME_BLOCK block;
+                struct RUNTIME_FRAME_BLOCK block;
 
                 block.type = MACHINE_MANAGED_POINTER;
                 block.link.type = RtlVectorGet(&frame->method->variables, index);
@@ -969,7 +981,7 @@ ExceptionHandlingZoneEnd:
             {
                 INT32 index = RtlReaderReadInt32(&reader);
 
-                struct FRAME_BLOCK block;
+                struct RUNTIME_FRAME_BLOCK block;
 
                 block.type = MACHINE_MANAGED_POINTER;
                 block.link.type = RtlVectorGet(&frame->method->parameters, index);
@@ -1011,11 +1023,183 @@ ExceptionHandlingZoneEnd:
                 ExPush(frame, block);
                 break;
             }
+            case OpLoadAddressOfArrayElement:
+            {
+                struct RUNTIME_TYPE *loadTarget = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FRAME_BLOCK index = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK array = ExPop(frame);
+
+                struct MANAGED_ARRAY* managedArray = array.descriptor;
+                VOID* address = &managedArray->pointer;
+                address += index.int32*loadTarget->size;
+
+                struct RUNTIME_FRAME_BLOCK block;
+                block.type = MACHINE_MANAGED_POINTER;
+                block.link.type = loadTarget;
+                block.link.pointer = address;
+
+                ExPush(frame,block);
+                break;
+            }
+            case OpStoreValueToPointer:
+            {
+                struct RUNTIME_TYPE *loadTarget = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FRAME_BLOCK value = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK address = ExPop(frame);
+
+                switch (address.type)
+                {
+                    case MACHINE_MANAGED_POINTER:
+                    {
+                        switch (loadTarget->inlined)
+                        {
+                            case BASE_BYTE:
+                            {
+                                VOID* pointerAddress = address.link.pointer;
+                                BYTE* target = pointerAddress;
+                                *target = value.int32;
+                                break;
+                            }
+                            case BASE_CHAR:
+                            case BASE_INT16:
+                            {
+                                VOID* pointerAddress = address.link.pointer;
+                                INT16* target = pointerAddress;
+                                *target = value.int32;
+                                break;
+                            }
+                            case BASE_INT32:
+                            {
+                                VOID* pointerAddress = address.link.pointer;
+                                INT32* target = pointerAddress;
+                                *target = value.int32;
+                                break;
+                            }
+                            case BASE_INT64:
+                            {
+                                VOID* pointerAddress = address.link.pointer;
+                                INT64* target = pointerAddress;
+                                *target = value.int64;
+                                break;
+                            }
+                            case BASE_SINGLE:
+                            {
+                                VOID* pointerAddress = address.link.pointer;
+                                SINGLE* target = pointerAddress;
+                                *target = value.floating;
+                                break;
+                            }
+                            case BASE_DOUBLE:
+                            {
+                                VOID* pointerAddress = address.link.pointer;
+                                DOUBLE* target = pointerAddress;
+                                *target = value.floating;
+                                break;
+                            }
+                            case BASE_OTHER:
+                            {
+                                VOID* pointerAddress = address.link.pointer;
+                                VOID** target = pointerAddress;
+                                *target = value.descriptor;
+                                break;
+                            }
+                            case BASE_INTPTR:
+                            {
+                                VOID* pointerAddress = address.link.pointer;
+                                INTPTR* target = pointerAddress;
+                                *target = value.pointer;
+                                break;
+                            }
+                            default:
+                            {
+                                ExThrowException(&ExExecutionEngineError);
+                                goto ExceptionHandlingZone;
+                            }
+                        }
+                        break;
+                    }
+                    case MACHINE_INTPTR:
+                    {
+                        switch (loadTarget->inlined)
+                        {
+                            case BASE_BYTE:
+                            {
+                                VOID* pointerAddress = (VOID*)address.pointer;
+                                BYTE* target = pointerAddress;
+                                *target = value.int32;
+                                break;
+                            }
+                            case BASE_CHAR:
+                            case BASE_INT16:
+                            {
+                                VOID* pointerAddress = (VOID*)address.pointer;
+                                INT16* target = pointerAddress;
+                                *target = value.int32;
+                                break;
+                            }
+                            case BASE_INT32:
+                            {
+                                VOID* pointerAddress = (VOID*)address.pointer;
+                                INT32* target = pointerAddress;
+                                *target = value.int32;
+                                break;
+                            }
+                            case BASE_INT64:
+                            {
+                                VOID* pointerAddress = (VOID*)address.pointer;
+                                INT64* target = pointerAddress;
+                                *target = value.int64;
+                                break;
+                            }
+                            case BASE_SINGLE:
+                            {
+                                VOID* pointerAddress = (VOID*)address.pointer;
+                                SINGLE* target = pointerAddress;
+                                *target = value.floating;
+                                break;
+                            }
+                            case BASE_DOUBLE:
+                            {
+                                VOID* pointerAddress = (VOID*)address.pointer;
+                                DOUBLE* target = pointerAddress;
+                                *target = value.floating;
+                                break;
+                            }
+                            case BASE_OTHER:
+                            {
+                                VOID* pointerAddress = (VOID*)address.pointer;
+                                VOID** target = pointerAddress;
+                                *target = value.descriptor;
+                                break;
+                            }
+                            case BASE_INTPTR:
+                            {
+                                VOID* pointerAddress = (VOID*)address.pointer;
+                                INTPTR* target = pointerAddress;
+                                *target = value.pointer;
+                                break;
+                            }
+                            default:
+                            {
+                                ExThrowException(&ExExecutionEngineError);
+                                goto ExceptionHandlingZone;
+                            }
+                        }
+                        break;
+                    }
+                    default:
+                    {
+                        ExThrowException(&ExExecutionEngineError);
+                        goto ExceptionHandlingZone;
+                    };
+                }
+                break;
+            }
             case OpLoadValueFromPointer:
             {
-                struct TYPE *loadTarget = ExGetPoolElement(&reader, frame);
-                struct FRAME_BLOCK peek = ExPop(frame);
-                struct FRAME_BLOCK value = {0};
+                struct RUNTIME_TYPE *loadTarget = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FRAME_BLOCK peek = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK value = {0};
 
                 switch (peek.type)
                 {
@@ -1029,13 +1213,13 @@ ExceptionHandlingZoneEnd:
                             case BASE_INT32:
                             {
                                 value.type = MACHINE_INT32;
-                                memcpy(&value.int32, peek.link.pointer, loadTarget->size);
+                                PalMemoryCopy(&value.int32, peek.link.pointer, loadTarget->size);
                                 break;
                             }
                             case BASE_INT64:
                             {
                                 value.type = MACHINE_INT64;
-                                memcpy(&value.int64, peek.link.pointer, loadTarget->size);
+                                PalMemoryCopy(&value.int64, peek.link.pointer, loadTarget->size);
                                 break;
                             }
                             case BASE_SINGLE:
@@ -1055,7 +1239,7 @@ ExceptionHandlingZoneEnd:
                             case BASE_INTPTR:
                             {
                                 value.type = MACHINE_INTPTR;
-                                memcpy(&value.pointer, peek.link.pointer, loadTarget->size);
+                                PalMemoryCopy(&value.pointer, peek.link.pointer, loadTarget->size);
                                 break;
                             }
                             case BASE_OTHER:
@@ -1093,13 +1277,13 @@ ExceptionHandlingZoneEnd:
                             case BASE_INT32:
                             {
                                 value.type = MACHINE_INT32;
-                                memcpy(&value.int32, (void *) peek.pointer, loadTarget->size);
+                                PalMemoryCopy(&value.int32, (void *) peek.pointer, loadTarget->size);
                                 break;
                             }
                             case BASE_INT64:
                             {
                                 value.type = MACHINE_INT64;
-                                memcpy(&value.int64, (void *) peek.pointer, loadTarget->size);
+                                PalMemoryCopy(&value.int64, (void *) peek.pointer, loadTarget->size);
                                 break;
                             }
                             case BASE_SINGLE:
@@ -1119,7 +1303,7 @@ ExceptionHandlingZoneEnd:
                             case BASE_INTPTR:
                             {
                                 value.type = MACHINE_INTPTR;
-                                memcpy(&value.pointer, (void *) peek.pointer, loadTarget->size);
+                                PalMemoryCopy(&value.pointer, (void *) peek.pointer, loadTarget->size);
                                 break;
                             }
 
@@ -1160,7 +1344,7 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadValueField:
             {
-                struct FRAME_BLOCK peek = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK peek = ExPop(frame);
 
                 if (MARX_FAIL(ExNullCheck(peek)))
                 {
@@ -1168,9 +1352,9 @@ ExceptionHandlingZoneEnd:
                     goto ExceptionHandlingZone;
                 }
 
-                struct FIELD *target = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FIELD *target = ExGetPoolElement(&reader, frame);
 
-                struct FRAME_BLOCK slot = {0};
+                struct RUNTIME_FRAME_BLOCK slot = {0};
 
                 void *ptr = NULL;
                 switch (peek.type)
@@ -1202,7 +1386,7 @@ ExceptionHandlingZoneEnd:
                     }
                     default:
                     {
-                        ExThrowException(&ExNullReference);
+                        ExThrowException(&ExExecutionEngineError);
                         goto ExceptionHandlingZone;
                         break;
                     }
@@ -1216,13 +1400,13 @@ ExceptionHandlingZoneEnd:
                     case BASE_INT32:
                     {
                         slot.type = MACHINE_INT32;
-                        memcpy(&slot.int32, ptr, target->dataSize);
+                        PalMemoryCopy(&slot.int32, ptr, target->dataSize);
                         break;
                     }
                     case BASE_INT64:
                     {
                         slot.type = MACHINE_INT64;
-                        memcpy(&slot.int64, ptr, target->dataSize);
+                        PalMemoryCopy(&slot.int64, ptr, target->dataSize);
                         break;
                     }
                     case BASE_SINGLE:
@@ -1242,7 +1426,7 @@ ExceptionHandlingZoneEnd:
                     case BASE_INTPTR:
                     {
                         slot.type = MACHINE_INTPTR;
-                        memcpy(&slot.floating, ptr, target->dataSize);
+                        PalMemoryCopy(&slot.floating, ptr, target->dataSize);
                         break;
                     }
                     case BASE_OTHER:
@@ -1250,21 +1434,94 @@ ExceptionHandlingZoneEnd:
                         if (!ExMetadataIs(target->declared->metadata, MxExMetadataStruct))
                         {
                             slot.type = MACHINE_OBJECT;
-                            memcpy(&slot.descriptor, ptr, target->dataSize);
+                            PalMemoryCopy(&slot.descriptor, ptr, target->dataSize);
                             break;
                         }
                         else
                         {
-                            slot.type = MACHINE_STRUCT;
-                            slot.valueType.type = target->declared;
-                            slot.valueType.pointer = __builtin_alloca(slot.valueType.type->size);
-                            memcpy(slot.valueType.pointer, ptr, slot.valueType.type->size);
-                            break;
+                            if (ExMetadataIs(target->declared->metadata,MxExMetadataEnum))
+                            {
+                                struct RUNTIME_FIELD* firstField = RtlVectorGet(&target->declared->fields,0);
+                                switch (firstField->declared->inlined)
+                                {
+                                    case BASE_INTPTR:
+                                    {
+                                        slot.type = MACHINE_INTPTR;
+                                        INTPTR *ptrValue = ptr;
+                                        slot.pointer = *ptrValue;
+                                        break;
+                                    }
+                                    case BASE_INT64:
+                                    {
+                                        slot.type = MACHINE_INT64;
+                                        INT64 *ptrValue = ptr;
+                                        slot.int64 = *ptrValue;
+                                        break;
+                                    }
+                                    case BASE_INT32:
+                                    {
+                                        slot.type = MACHINE_INT32;
+                                        INT32 *ptrValue = ptr;
+                                        slot.int32 = *ptrValue;
+                                        break;
+                                    }
+                                    case BASE_INT16:
+                                    {
+                                        slot.type = MACHINE_INT32;
+                                        INT16 *ptrValue = ptr;
+                                        slot.int32 = *ptrValue;
+                                        break;
+                                    }
+                                    case BASE_SINGLE:
+                                    {
+                                        slot.type = MACHINE_MFLOAT;
+                                        SINGLE *ptrValue = ptr;
+                                        slot.floating = *ptrValue;
+                                        break;
+                                    }
+                                    case BASE_DOUBLE:
+                                    {
+                                        slot.type = MACHINE_MFLOAT;
+                                        DOUBLE *ptrValue = ptr;
+                                        slot.floating = *ptrValue;
+                                        break;
+                                    }
+                                    case BASE_BYTE:
+                                    {
+                                        slot.type = MACHINE_INT32;
+                                        BYTE *ptrValue = ptr;
+                                        slot.int32 = *ptrValue;
+                                        break;
+                                    }
+                                    case BASE_CHAR:
+                                    {
+                                        slot.type = MACHINE_INT32;
+                                        WCHAR *ptrValue = ptr;
+                                        slot.int32 = *ptrValue;
+                                        break;
+                                    }
+                                    default:
+                                    {
+                                        ExThrowException(&ExExecutionEngineError);
+                                        goto ExceptionHandlingZone;
+                                        break;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                slot.type = MACHINE_STRUCT;
+                                slot.valueType.type = target->declared;
+                                slot.valueType.pointer = __builtin_alloca(slot.valueType.type->size);
+                                PalMemoryCopy(slot.valueType.pointer, ptr, slot.valueType.type->size);
+                                break;
+                            }
                         }
+                        break;
                     }
                     default:
                     {
-                        ExThrowException(&ExNullReference);
+                        ExThrowException(&ExExecutionEngineError);
                         goto ExceptionHandlingZone;
                         break;
                     }
@@ -1275,9 +1532,9 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadStaticField:
             {
-                struct FIELD *target = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FIELD *target = ExGetPoolElement(&reader, frame);
 
-                struct FRAME_BLOCK slot = {0};
+                struct RUNTIME_FRAME_BLOCK slot = {0};
 
                 switch (target->declared->inlined)
                 {
@@ -1287,13 +1544,13 @@ ExceptionHandlingZoneEnd:
                     case BASE_INT32:
                     {
                         slot.type = MACHINE_INT32;
-                        memcpy(&slot.int32, target->staticValue, target->dataSize);
+                        PalMemoryCopy(&slot.int32, target->staticValue, target->dataSize);
                         break;
                     }
                     case BASE_INT64:
                     {
                         slot.type = MACHINE_INT64;
-                        memcpy(&slot.int64, target->staticValue, target->dataSize);
+                        PalMemoryCopy(&slot.int64, target->staticValue, target->dataSize);
                         break;
                     }
                     case BASE_SINGLE:
@@ -1322,7 +1579,7 @@ ExceptionHandlingZoneEnd:
 
                         void *ptr = target->staticValue;
 
-                        memcpy(&slot.floating, ptr, target->dataSize);
+                        PalMemoryCopy(&slot.floating, ptr, target->dataSize);
                         break;
                     }
                     case BASE_OTHER:
@@ -1330,7 +1587,7 @@ ExceptionHandlingZoneEnd:
                         if (!ExMetadataIs(target->declared->metadata, MxExMetadataStruct))
                         {
                             slot.type = MACHINE_OBJECT;
-                            memcpy(&slot.descriptor, target->staticValue, target->dataSize);
+                            PalMemoryCopy(&slot.descriptor, target->staticValue, target->dataSize);
                             break;
                         }
                         else
@@ -1338,13 +1595,13 @@ ExceptionHandlingZoneEnd:
                             slot.type = MACHINE_STRUCT;
                             slot.valueType.type = target->declared;
                             slot.valueType.pointer = __builtin_alloca(slot.valueType.type->size);
-                            memcpy(slot.valueType.pointer, target->staticValue, slot.valueType.type->size);
+                            PalMemoryCopy(slot.valueType.pointer, target->staticValue, slot.valueType.type->size);
                             break;
                         }
                     }
                     default:
                     {
-                        ExThrowException(&ExNullReference);
+                        ExThrowException(&ExExecutionEngineError);
                         goto ExceptionHandlingZone;
                         break;
                     }
@@ -1355,10 +1612,10 @@ ExceptionHandlingZoneEnd:
             }
             case OpStoreValueField:
             {
-                struct FIELD *target = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FIELD *target = ExGetPoolElement(&reader, frame);
 
-                struct FRAME_BLOCK value = ExPop(frame);
-                struct FRAME_BLOCK source = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK value = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK source = ExPop(frame);
 
                 struct OBJECT_HEADER *objData = source.descriptor;
 
@@ -1386,7 +1643,7 @@ ExceptionHandlingZoneEnd:
                 }
                 else
                 {
-                    ExThrowException(&ExNullReference);
+                    ExThrowException(&ExExecutionEngineError);
                     goto ExceptionHandlingZone;
                     break;
                 }
@@ -1398,29 +1655,29 @@ ExceptionHandlingZoneEnd:
                     case BASE_INT16:
                     case BASE_INT32:
                     {
-                        memcpy(storePointer, &value.int32, target->dataSize);
+                        PalMemoryCopy(storePointer, &value.int32, target->dataSize);
                         break;
                     }
                     case BASE_INT64:
                     {
-                        memcpy(storePointer, &value.int64, target->dataSize);
+                        PalMemoryCopy(storePointer, &value.int64, target->dataSize);
                         break;
                     }
                     case BASE_SINGLE:
                     {
                         SINGLE slotValue = value.floating;
-                        memcpy(storePointer, &slotValue, target->dataSize);
+                        PalMemoryCopy(storePointer, &slotValue, target->dataSize);
                         break;
                     }
                     case BASE_DOUBLE:
                     {
                         DOUBLE slotValue = value.floating;
-                        memcpy(storePointer, &slotValue, target->dataSize);
+                        PalMemoryCopy(storePointer, &slotValue, target->dataSize);
                         break;
                     }
                     case BASE_INTPTR:
                     {
-                        memcpy(storePointer, &value.pointer, target->dataSize);
+                        PalMemoryCopy(storePointer, &value.pointer, target->dataSize);
                         break;
                     }
                     case BASE_OTHER:
@@ -1433,27 +1690,27 @@ ExceptionHandlingZoneEnd:
                                 {
                                     case MACHINE_INT32:
                                     {
-                                        memcpy(storePointer, &value.int32, target->dataSize);
+                                        PalMemoryCopy(storePointer, &value.int32, target->dataSize);
                                         break;
                                     }
                                     case MACHINE_INT64:
                                     {
-                                        memcpy(storePointer, &value.int64, target->dataSize);
+                                        PalMemoryCopy(storePointer, &value.int64, target->dataSize);
                                         break;
                                     }
                                     case MACHINE_INTPTR:
                                     {
-                                        memcpy(storePointer, &value.pointer, target->dataSize);
+                                        PalMemoryCopy(storePointer, &value.pointer, target->dataSize);
                                         break;
                                     }
                                     case MACHINE_MFLOAT:
                                     {
-                                        memcpy(storePointer, &value.floating, target->dataSize);
+                                        PalMemoryCopy(storePointer, &value.floating, target->dataSize);
                                         break;
                                     }
                                     default:
                                     {
-                                        ExThrowException(&ExNullReference);
+                                        ExThrowException(&ExExecutionEngineError);
                                         goto ExceptionHandlingZone;
                                         break;
                                     };
@@ -1461,20 +1718,20 @@ ExceptionHandlingZoneEnd:
                             }
                             else
                             {
-                                memcpy(storePointer, value.valueType.pointer, target->dataSize);
+                                PalMemoryCopy(storePointer, value.valueType.pointer, target->dataSize);
                                 break;
                             }
                         }
                         else
                         {
-                            memcpy(storePointer, &value.descriptor, target->dataSize);
+                            PalMemoryCopy(storePointer, &value.descriptor, target->dataSize);
                             break;
                         }
                         break;
                     }
                     default:
                     {
-                        ExThrowException(&ExNullReference);
+                        ExThrowException(&ExExecutionEngineError);
                         goto ExceptionHandlingZone;
                         break;
                     }
@@ -1484,9 +1741,9 @@ ExceptionHandlingZoneEnd:
             }
             case OpStoreStaticField:
             {
-                struct FIELD *target = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FIELD *target = ExGetPoolElement(&reader, frame);
 
-                struct FRAME_BLOCK value = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK value = ExPop(frame);
 
                 void *storePointer = target->staticValue;
 
@@ -1497,39 +1754,39 @@ ExceptionHandlingZoneEnd:
                     case BASE_INT16:
                     case BASE_INT32:
                     {
-                        memcpy(storePointer, &value.int32, target->dataSize);
+                        PalMemoryCopy(storePointer, &value.int32, target->dataSize);
                         break;
                     }
                     case BASE_INT64:
                     {
-                        memcpy(storePointer, &value.int64, target->dataSize);
+                        PalMemoryCopy(storePointer, &value.int64, target->dataSize);
                         break;
                     }
                     case BASE_SINGLE:
                     {
                         SINGLE slotValue = value.floating;
-                        memcpy(storePointer, &slotValue, target->dataSize);
+                        PalMemoryCopy(storePointer, &slotValue, target->dataSize);
                         break;
                     }
                     case BASE_DOUBLE:
                     {
                         DOUBLE slotValue = value.floating;
-                        memcpy(storePointer, &slotValue, target->dataSize);
+                        PalMemoryCopy(storePointer, &slotValue, target->dataSize);
                         break;
                     }
                     case BASE_INTPTR:
                     {
-                        memcpy(storePointer, &value.pointer, target->dataSize);
+                        PalMemoryCopy(storePointer, &value.pointer, target->dataSize);
                         break;
                     }
                     case BASE_OTHER:
                     {
-                        memcpy(storePointer, &value.descriptor, target->dataSize);
+                        PalMemoryCopy(storePointer, &value.descriptor, target->dataSize);
                         break;
                     }
                     default:
                     {
-                        ExThrowException(&ExNullReference);
+                        ExThrowException(&ExExecutionEngineError);
                         goto ExceptionHandlingZone;
                         break;
                     }
@@ -1555,11 +1812,11 @@ ExceptionHandlingZoneEnd:
 
                 if (frame->variables[index].type == MACHINE_STRUCT)
                 {
-                    struct FRAME_BLOCK clone = {0};
+                    struct RUNTIME_FRAME_BLOCK clone = {0};
                     clone.type = MACHINE_STRUCT;
                     clone.valueType.type = frame->variables[index].valueType.type;
                     clone.valueType.pointer = PalStackAllocate(clone.valueType.type->size);
-                    memcpy(clone.valueType.pointer,
+                    PalMemoryCopy(clone.valueType.pointer,
                            frame->variables[index].valueType.pointer,
                            clone.valueType.type->size);
                     ExPush(frame, clone);
@@ -1574,11 +1831,11 @@ ExceptionHandlingZoneEnd:
             case OpStoreLocal:
             {
                 INT32 index = RtlReaderReadInt32(&reader);
-                struct FRAME_BLOCK peek = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK peek = ExPop(frame);
 
                 if (peek.type == MACHINE_STRUCT)
                 {
-                    memcpy(frame->variables[index].valueType.pointer,
+                    PalMemoryCopy(frame->variables[index].valueType.pointer,
                            peek.valueType.pointer,
                            peek.valueType.type->size);
                 }
@@ -1591,7 +1848,7 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadNull:
             {
-                struct FRAME_BLOCK nullPtr;
+                struct RUNTIME_FRAME_BLOCK nullPtr;
 
                 nullPtr.type = MACHINE_OBJECT;
                 nullPtr.descriptor = NULL;
@@ -1607,7 +1864,7 @@ ExceptionHandlingZoneEnd:
                 struct MANAGED_STRING *string = HpAllocateManaged(sizeof(struct MANAGED_STRING));
                 string->header.type = ExStringType;
 
-                struct FRAME_BLOCK block = {
+                struct RUNTIME_FRAME_BLOCK block = {
                     .type = MACHINE_OBJECT,
                     .descriptor = string
                 };
@@ -1628,9 +1885,9 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadMethodDescriptor:
             {
-                struct METHOD *method = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_METHOD *method = ExGetPoolElement(&reader, frame);
 
-                struct FRAME_BLOCK block;
+                struct RUNTIME_FRAME_BLOCK block;
                 block.type = MACHINE_INTPTR;
                 block.descriptor = method;
 
@@ -1639,9 +1896,9 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadVirtualMethodDescriptor:
             {
-                struct METHOD *method = ExGetPoolElement(&reader, frame);
-                struct METHOD *virt;
-                struct FRAME_BLOCK obj = ExPop(frame);
+                struct RUNTIME_METHOD *method = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_METHOD *virt;
+                struct RUNTIME_FRAME_BLOCK obj = ExPop(frame);
 
                 if (MARX_FAIL(ExNullCheck(obj)))
                 {
@@ -1651,7 +1908,7 @@ ExceptionHandlingZoneEnd:
 
                 if (MARX_SUCCESS(ExLocateVirtualMethod(&obj,method,&virt)))
                 {
-                    struct FRAME_BLOCK block;
+                    struct RUNTIME_FRAME_BLOCK block;
                     block.type = MACHINE_INTPTR;
                     block.descriptor = virt;
 
@@ -1667,12 +1924,12 @@ ExceptionHandlingZoneEnd:
             }
             case OpNewArray:
             {
-                struct TYPE *type = ExGetPoolElement(&reader, frame);
-                struct TYPE *arrayType = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_TYPE *type = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_TYPE *arrayType = ExGetPoolElement(&reader, frame);
 
                 struct MANAGED_ARRAY *managed = NULL;
 
-                struct FRAME_BLOCK slot = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK slot = ExPop(frame);
 
                 if (ExMetadataIs(type->metadata, MxExMetadataStruct))
                 {
@@ -1687,7 +1944,7 @@ ExceptionHandlingZoneEnd:
                 managed->elementType = type;
                 managed->count = slot.int32;
 
-                struct FRAME_BLOCK newSlot = {0};
+                struct RUNTIME_FRAME_BLOCK newSlot = {0};
                 newSlot.type = MACHINE_OBJECT;
                 newSlot.descriptor = managed;
 
@@ -1696,9 +1953,9 @@ ExceptionHandlingZoneEnd:
             }
             case OpInitializeObject:
             {
-                struct TYPE *type = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_TYPE *type = ExGetPoolElement(&reader, frame);
 
-                struct FRAME_BLOCK top = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK top = ExPeek(frame);
 
                 if (top.type == MACHINE_MANAGED_POINTER)
                 {
@@ -1720,9 +1977,9 @@ ExceptionHandlingZoneEnd:
             {
                 PalSafepoint();
 
-                struct METHOD *ctor = ExGetPoolElement(&reader, frame);
-                struct FRAME_BLOCK ret;
-                struct FRAME_BLOCK block;
+                struct RUNTIME_METHOD *ctor = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FRAME_BLOCK ret;
+                struct RUNTIME_FRAME_BLOCK block;
 
                 VOID *instance = NULL;
                 if (ExMetadataIs(ctor->owner->metadata, MxExMetadataStruct))
@@ -1751,7 +2008,7 @@ ExceptionHandlingZoneEnd:
                     {
                         ExMethodEpilogue(frame);
 
-                        if (retInfo != STATUS_EXCEPTION)
+                        if (retInfo != MARX_STATUS_EXCEPTION)
                         {
                             ExThrowException(&ExExecutionEngineError);
                         }
@@ -1767,7 +2024,7 @@ ExceptionHandlingZoneEnd:
                     {
                         ExMethodEpilogue(frame);
 
-                        if (retInfo != STATUS_EXCEPTION)
+                        if (retInfo != MARX_STATUS_EXCEPTION)
                         {
                             ExThrowException(&ExExecutionEngineError);
                         }
@@ -1781,7 +2038,7 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadImmediateInt32:
             {
-                struct FRAME_BLOCK block;
+                struct RUNTIME_FRAME_BLOCK block;
 
                 block.type = MACHINE_INT32;
                 block.int32 = RtlReaderReadInt32(&reader);
@@ -1791,7 +2048,7 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadImmediateInt64:
             {
-                struct FRAME_BLOCK block;
+                struct RUNTIME_FRAME_BLOCK block;
 
                 block.type = MACHINE_INT64;
                 block.int64 = RtlReaderReadInt64(&reader);
@@ -1801,7 +2058,7 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadImmediateFloat:
             {
-                struct FRAME_BLOCK block;
+                struct RUNTIME_FRAME_BLOCK block;
 
                 block.type = MACHINE_MFLOAT;
                 block.floating = RtlReaderReadSingle(&reader);
@@ -1811,7 +2068,7 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadImmediateDouble:
             {
-                struct FRAME_BLOCK block;
+                struct RUNTIME_FRAME_BLOCK block;
 
                 block.type = MACHINE_MFLOAT;
                 block.floating = RtlReaderReadDouble(&reader);
@@ -1821,8 +2078,8 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadNativeIntFromArray:
             {
-                struct FRAME_BLOCK index;
-                struct FRAME_BLOCK array;
+                struct RUNTIME_FRAME_BLOCK index;
+                struct RUNTIME_FRAME_BLOCK array;
 
                 index = ExPop(frame);
                 array = ExPop(frame);
@@ -1841,7 +2098,7 @@ ExceptionHandlingZoneEnd:
 
                 struct MANAGED_ARRAY *arrayReference = array.descriptor;
 
-                struct FRAME_BLOCK newValue;
+                struct RUNTIME_FRAME_BLOCK newValue;
 
                 newValue.type = MACHINE_INTPTR;
                 newValue.pointer = arrayReference->nint[index.int32];
@@ -1851,8 +2108,8 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadInt8FromArray:
             {
-                struct FRAME_BLOCK index;
-                struct FRAME_BLOCK array;
+                struct RUNTIME_FRAME_BLOCK index;
+                struct RUNTIME_FRAME_BLOCK array;
 
                 index = ExPop(frame);
                 array = ExPop(frame);
@@ -1871,7 +2128,7 @@ ExceptionHandlingZoneEnd:
 
                 struct MANAGED_ARRAY *arrayReference = array.descriptor;
 
-                struct FRAME_BLOCK newValue;
+                struct RUNTIME_FRAME_BLOCK newValue;
 
                 newValue.type = MACHINE_INT32;
                 newValue.int32 = arrayReference->byte[index.int32];
@@ -1881,8 +2138,8 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadInt16FromArray:
             {
-                struct FRAME_BLOCK index;
-                struct FRAME_BLOCK array;
+                struct RUNTIME_FRAME_BLOCK index;
+                struct RUNTIME_FRAME_BLOCK array;
 
                 index = ExPop(frame);
                 array = ExPop(frame);
@@ -1901,7 +2158,7 @@ ExceptionHandlingZoneEnd:
 
                 struct MANAGED_ARRAY *arrayReference = array.descriptor;
 
-                struct FRAME_BLOCK newValue;
+                struct RUNTIME_FRAME_BLOCK newValue;
 
                 newValue.type = MACHINE_INT32;
                 newValue.int32 = arrayReference->int16[index.int32];
@@ -1911,8 +2168,8 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadInt32FromArray:
             {
-                struct FRAME_BLOCK index;
-                struct FRAME_BLOCK array;
+                struct RUNTIME_FRAME_BLOCK index;
+                struct RUNTIME_FRAME_BLOCK array;
 
                 index = ExPop(frame);
                 array = ExPop(frame);
@@ -1931,7 +2188,7 @@ ExceptionHandlingZoneEnd:
 
                 struct MANAGED_ARRAY *arrayReference = array.descriptor;
 
-                struct FRAME_BLOCK newValue;
+                struct RUNTIME_FRAME_BLOCK newValue;
 
                 newValue.type = MACHINE_INT32;
                 newValue.int32 = arrayReference->int32[index.int32];
@@ -1941,8 +2198,8 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadInt64FromArray:
             {
-                struct FRAME_BLOCK index;
-                struct FRAME_BLOCK array;
+                struct RUNTIME_FRAME_BLOCK index;
+                struct RUNTIME_FRAME_BLOCK array;
 
                 index = ExPop(frame);
                 array = ExPop(frame);
@@ -1961,7 +2218,7 @@ ExceptionHandlingZoneEnd:
 
                 struct MANAGED_ARRAY *arrayReference = array.descriptor;
 
-                struct FRAME_BLOCK newValue;
+                struct RUNTIME_FRAME_BLOCK newValue;
 
                 newValue.type = MACHINE_INT64;
                 newValue.int64 = arrayReference->int64[index.int32];
@@ -1971,8 +2228,8 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadFloatFromArray:
             {
-                struct FRAME_BLOCK index;
-                struct FRAME_BLOCK array;
+                struct RUNTIME_FRAME_BLOCK index;
+                struct RUNTIME_FRAME_BLOCK array;
 
                 index = ExPop(frame);
                 array = ExPop(frame);
@@ -1991,7 +2248,7 @@ ExceptionHandlingZoneEnd:
 
                 struct MANAGED_ARRAY *arrayReference = array.descriptor;
 
-                struct FRAME_BLOCK newValue;
+                struct RUNTIME_FRAME_BLOCK newValue;
 
                 newValue.type = MACHINE_MFLOAT;
                 newValue.floating = arrayReference->single[index.int32];
@@ -2001,8 +2258,8 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadDoubleFromArray:
             {
-                struct FRAME_BLOCK index;
-                struct FRAME_BLOCK array;
+                struct RUNTIME_FRAME_BLOCK index;
+                struct RUNTIME_FRAME_BLOCK array;
 
                 index = ExPop(frame);
                 array = ExPop(frame);
@@ -2021,7 +2278,7 @@ ExceptionHandlingZoneEnd:
 
                 struct MANAGED_ARRAY *arrayReference = array.descriptor;
 
-                struct FRAME_BLOCK newValue;
+                struct RUNTIME_FRAME_BLOCK newValue;
 
                 newValue.type = MACHINE_MFLOAT;
                 newValue.floating = arrayReference->duoble[index.int32];
@@ -2031,8 +2288,8 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadObjectFromArray:
             {
-                struct FRAME_BLOCK index;
-                struct FRAME_BLOCK array;
+                struct RUNTIME_FRAME_BLOCK index;
+                struct RUNTIME_FRAME_BLOCK array;
 
                 index = ExPop(frame);
                 array = ExPop(frame);
@@ -2051,7 +2308,7 @@ ExceptionHandlingZoneEnd:
 
                 struct MANAGED_ARRAY *arrayReference = array.descriptor;
 
-                struct FRAME_BLOCK newValue;
+                struct RUNTIME_FRAME_BLOCK newValue;
 
                 newValue.type = MACHINE_OBJECT;
                 newValue.descriptor = arrayReference->pointer[index.int32];
@@ -2061,7 +2318,7 @@ ExceptionHandlingZoneEnd:
             }
             case OpLoadArrayLength:
             {
-                struct FRAME_BLOCK array;
+                struct RUNTIME_FRAME_BLOCK array;
 
                 array = ExPop(frame);
 
@@ -2073,7 +2330,7 @@ ExceptionHandlingZoneEnd:
 
                 struct MANAGED_ARRAY *arrayReference = array.descriptor;
 
-                struct FRAME_BLOCK newValue;
+                struct RUNTIME_FRAME_BLOCK newValue;
 
                 newValue.type = MACHINE_INT32;
                 newValue.int32 = arrayReference->count;
@@ -2083,9 +2340,9 @@ ExceptionHandlingZoneEnd:
             }
             case OpStoreNativeIntToArray:
             {
-                struct FRAME_BLOCK value = ExPop(frame);
-                struct FRAME_BLOCK index = ExPop(frame);
-                struct FRAME_BLOCK array = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK value = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK index = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK array = ExPop(frame);
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
@@ -2105,9 +2362,9 @@ ExceptionHandlingZoneEnd:
             }
             case OpStoreInt8ToArray:
             {
-                struct FRAME_BLOCK value = ExPop(frame);
-                struct FRAME_BLOCK index = ExPop(frame);
-                struct FRAME_BLOCK array = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK value = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK index = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK array = ExPop(frame);
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
@@ -2127,9 +2384,9 @@ ExceptionHandlingZoneEnd:
             }
             case OpStoreInt16ToArray:
             {
-                struct FRAME_BLOCK value = ExPop(frame);
-                struct FRAME_BLOCK index = ExPop(frame);
-                struct FRAME_BLOCK array = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK value = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK index = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK array = ExPop(frame);
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
@@ -2149,9 +2406,9 @@ ExceptionHandlingZoneEnd:
             }
             case OpStoreInt32ToArray:
             {
-                struct FRAME_BLOCK value = ExPop(frame);
-                struct FRAME_BLOCK index = ExPop(frame);
-                struct FRAME_BLOCK array = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK value = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK index = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK array = ExPop(frame);
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
@@ -2171,9 +2428,9 @@ ExceptionHandlingZoneEnd:
             }
             case OpStoreInt64ToArray:
             {
-                struct FRAME_BLOCK value = ExPop(frame);
-                struct FRAME_BLOCK index = ExPop(frame);
-                struct FRAME_BLOCK array = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK value = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK index = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK array = ExPop(frame);
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
@@ -2193,9 +2450,9 @@ ExceptionHandlingZoneEnd:
             }
             case OpStoreFloatToArray:
             {
-                struct FRAME_BLOCK value = ExPop(frame);
-                struct FRAME_BLOCK index = ExPop(frame);
-                struct FRAME_BLOCK array = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK value = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK index = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK array = ExPop(frame);
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
@@ -2215,9 +2472,9 @@ ExceptionHandlingZoneEnd:
             }
             case OpStoreDoubleToArray:
             {
-                struct FRAME_BLOCK value = ExPop(frame);
-                struct FRAME_BLOCK index = ExPop(frame);
-                struct FRAME_BLOCK array = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK value = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK index = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK array = ExPop(frame);
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
@@ -2237,9 +2494,9 @@ ExceptionHandlingZoneEnd:
             }
             case OpStoreObjectToArray:
             {
-                struct FRAME_BLOCK value = ExPop(frame);
-                struct FRAME_BLOCK index = ExPop(frame);
-                struct FRAME_BLOCK array = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK value = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK index = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK array = ExPop(frame);
 
                 if (MARX_FAIL(ExNullCheck(array)))
                 {
@@ -2261,8 +2518,8 @@ ExceptionHandlingZoneEnd:
             {
                 INT32 offset = RtlReaderReadInt32(&reader);
 
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 if (ExIsEquals(first, second))
                 {
@@ -2274,8 +2531,8 @@ ExceptionHandlingZoneEnd:
             {
                 INT32 offset = RtlReaderReadInt32(&reader);
 
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 if (ExIsGreaterEquals(first, second))
                 {
@@ -2287,8 +2544,8 @@ ExceptionHandlingZoneEnd:
             {
                 INT32 offset = RtlReaderReadInt32(&reader);
 
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 if (ExIsGreater(first, second))
                 {
@@ -2300,8 +2557,8 @@ ExceptionHandlingZoneEnd:
             {
                 INT32 offset = RtlReaderReadInt32(&reader);
 
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 if (ExIsLowerEquals(first, second))
                 {
@@ -2313,8 +2570,8 @@ ExceptionHandlingZoneEnd:
             {
                 INT32 offset = RtlReaderReadInt32(&reader);
 
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 if (ExIsLower(first, second))
                 {
@@ -2326,7 +2583,7 @@ ExceptionHandlingZoneEnd:
             {
                 INT32 offset = RtlReaderReadInt32(&reader);
 
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 if (ExIsZero(first))
                 {
@@ -2338,7 +2595,7 @@ ExceptionHandlingZoneEnd:
             {
                 INT32 offset = RtlReaderReadInt32(&reader);
 
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 if (ExIsNonZero(first))
                 {
@@ -2358,8 +2615,8 @@ ExceptionHandlingZoneEnd:
             {
                 INT32 offset = RtlReaderReadInt32(&reader);
 
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
                 if (ExIsUnEquals(first, second))
                 {
@@ -2369,10 +2626,10 @@ ExceptionHandlingZoneEnd:
             }
             case OpPushOneIfEqual:
             {
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
-                struct FRAME_BLOCK result;
+                struct RUNTIME_FRAME_BLOCK result;
                 result.type = MACHINE_INT32;
 
                 if (ExIsEquals(first, second))
@@ -2390,10 +2647,10 @@ ExceptionHandlingZoneEnd:
             case OpPushOneIfGreaterUn:
             case OpPushOneIfGreater:
             {
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
-                struct FRAME_BLOCK result;
+                struct RUNTIME_FRAME_BLOCK result;
                 result.type = MACHINE_INT32;
 
                 if (ExIsGreater(first, second))
@@ -2411,10 +2668,10 @@ ExceptionHandlingZoneEnd:
             case OpPushOneIfLowerUn:
             case OpPushOneIfLower:
             {
-                struct FRAME_BLOCK second = ExPop(frame);
-                struct FRAME_BLOCK first = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK second = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK first = ExPop(frame);
 
-                struct FRAME_BLOCK result;
+                struct RUNTIME_FRAME_BLOCK result;
                 result.type = MACHINE_INT32;
 
                 if (ExIsLower(first, second))
@@ -2433,8 +2690,8 @@ ExceptionHandlingZoneEnd:
             {
                 PalSafepoint();
 
-                struct METHOD *target = ExGetPoolElement(&reader, frame);
-                struct FRAME_BLOCK ret;
+                struct RUNTIME_METHOD *target = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FRAME_BLOCK ret;
                 MARX_STATUS state;
 
                 if (ExMetadataIs(target->metadata, MxExMetadataExtern))
@@ -2457,7 +2714,7 @@ ExceptionHandlingZoneEnd:
                 }
                 else
                 {
-                    if (state != STATUS_EXCEPTION)
+                    if (state != MARX_STATUS_EXCEPTION)
                     {
                         ExThrowException(&ExExecutionEngineError);
                     }
@@ -2470,10 +2727,10 @@ ExceptionHandlingZoneEnd:
             {
                 PalSafepoint();
 
-                struct METHOD *target = ExGetPoolElement(&reader, frame);
-                struct FRAME_BLOCK *hed = &frame->stack[frame->sp - target->parameters.count];
-                struct METHOD *virt;
-                struct FRAME_BLOCK ret;
+                struct RUNTIME_METHOD *target = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FRAME_BLOCK *hed = &frame->stack[frame->sp - target->parameters.count];
+                struct RUNTIME_METHOD *virt;
+                struct RUNTIME_FRAME_BLOCK ret;
                 MARX_STATUS state;
 
                 if (MARX_FAIL(ExNullCheck(*hed)))
@@ -2493,7 +2750,7 @@ ExceptionHandlingZoneEnd:
                         virt->shortName,
                         "Invoke"))
                 {
-                    struct FRAME_BLOCK *frameInfo = &frame->stack[frame->sp - target->parameters.count];
+                    struct RUNTIME_FRAME_BLOCK *frameInfo = &frame->stack[frame->sp - target->parameters.count];
                     state = ExMethodPrologueDelegate(frameInfo,NULL, frame, &ret);
                     ExPop(frame);
                     ExMethodEpilogue(frame);
@@ -2518,7 +2775,7 @@ ExceptionHandlingZoneEnd:
                 }
                 else
                 {
-                    if (state != STATUS_EXCEPTION)
+                    if (state != MARX_STATUS_EXCEPTION)
                     {
                         ExThrowException(&ExExecutionEngineError);
                     }
@@ -2531,21 +2788,21 @@ ExceptionHandlingZoneEnd:
             {
                 if (frame->method->isReturns)
                 {
-                    struct FRAME_BLOCK block = ExPop(frame);
+                    struct RUNTIME_FRAME_BLOCK block = ExPop(frame);
                     *returnValue = block;
-                    return STATUS_SUCCESS;
+                    return MARX_STATUS_SUCCESS;
                 }
                 else
                 {
-                    return STATUS_SUCCESS;
+                    return MARX_STATUS_SUCCESS;
                 }
 
                 break;
             }
             case OpIsInstance:
             {
-                struct TYPE *castTarget = ExGetPoolElement(&reader, frame);
-                struct FRAME_BLOCK block = ExPeek(frame);
+                struct RUNTIME_TYPE *castTarget = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FRAME_BLOCK block = ExPeek(frame);
 
                 if (block.descriptor == NULL)
                 {
@@ -2572,8 +2829,8 @@ ExceptionHandlingZoneEnd:
             }
             case OpCastClass:
             {
-                struct TYPE *castTarget = ExGetPoolElement(&reader, frame);
-                struct FRAME_BLOCK block = ExPeek(frame);
+                struct RUNTIME_TYPE *castTarget = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FRAME_BLOCK block = ExPeek(frame);
 
                 if (block.descriptor == NULL)
                 {
@@ -2602,8 +2859,8 @@ ExceptionHandlingZoneEnd:
             {
                 PalSafepoint();
 
-                struct TYPE *loadTarget = ExGetPoolElement(&reader, frame);
-                struct FRAME_BLOCK peek = ExPop(frame);
+                struct RUNTIME_TYPE *loadTarget = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FRAME_BLOCK peek = ExPop(frame);
 
                 if (!ExMetadataIs(loadTarget->metadata, MxExMetadataStruct))
                 {
@@ -2624,34 +2881,34 @@ ExceptionHandlingZoneEnd:
                     case BASE_INT16:
                     case BASE_INT32:
                     {
-                        memcpy(pointerToData, &peek.int32, loadTarget->size);
+                        PalMemoryCopy(pointerToData, &peek.int32, loadTarget->size);
                         break;
                     }
                     case BASE_INT64:
                     {
-                        memcpy(pointerToData, &peek.int64, loadTarget->size);
+                        PalMemoryCopy(pointerToData, &peek.int64, loadTarget->size);
                         break;
                     }
                     case BASE_SINGLE:
                     {
                         SINGLE valueTarget = peek.floating;
-                        memcpy(pointerToData, &valueTarget, loadTarget->size);
+                        PalMemoryCopy(pointerToData, &valueTarget, loadTarget->size);
                         break;
                     }
                     case BASE_DOUBLE:
                     {
                         DOUBLE valueTarget = peek.floating;
-                        memcpy(pointerToData, &valueTarget, loadTarget->size);
+                        PalMemoryCopy(pointerToData, &valueTarget, loadTarget->size);
                         break;
                     }
                     case BASE_INTPTR:
                     {
-                        memcpy(pointerToData, &peek.pointer, loadTarget->size);
+                        PalMemoryCopy(pointerToData, &peek.pointer, loadTarget->size);
                         break;
                     }
                     case BASE_OTHER:
                     {
-                        memcpy(pointerToData, &peek.valueType.pointer, loadTarget->size);
+                        PalMemoryCopy(pointerToData, &peek.valueType.pointer, loadTarget->size);
                         break;
                     }
                     default:
@@ -2662,7 +2919,7 @@ ExceptionHandlingZoneEnd:
                     }
                 }
 
-                struct FRAME_BLOCK boxed = {
+                struct RUNTIME_FRAME_BLOCK boxed = {
                     boxed.type = MACHINE_OBJECT,
                     boxed.descriptor = reference
                 };
@@ -2672,8 +2929,8 @@ ExceptionHandlingZoneEnd:
             }
             case OpUnboxToPointer:
             {
-                struct TYPE *loadTarget = ExGetPoolElement(&reader, frame);
-                struct FRAME_BLOCK peek = ExPop(frame);
+                struct RUNTIME_TYPE *loadTarget = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FRAME_BLOCK peek = ExPop(frame);
 
                 if (peek.type != MACHINE_OBJECT || !ExMetadataIs(loadTarget->metadata, MxExMetadataStruct))
                 {
@@ -2685,26 +2942,26 @@ ExceptionHandlingZoneEnd:
                 void *dataPointer = peek.descriptor;
                 dataPointer += sizeof(struct OBJECT_HEADER);
 
-                struct FRAME_BLOCK unboxed = {
+                struct RUNTIME_FRAME_BLOCK unboxed = {
                     unboxed.type = MACHINE_MANAGED_POINTER,
                     unboxed.link.type = loadTarget
                 };
 
                 unboxed.link.pointer = PalStackAllocate(loadTarget->size);
-                memcpy(unboxed.link.pointer, dataPointer, loadTarget->size);
+                PalMemoryCopy(unboxed.link.pointer, dataPointer, loadTarget->size);
 
                 ExPush(frame, unboxed);
                 break;
             }
             case OpUnboxToValue:
             {
-                struct TYPE *loadTarget = ExGetPoolElement(&reader, frame);
-                struct FRAME_BLOCK peek = ExPop(frame);
+                struct RUNTIME_TYPE *loadTarget = ExGetPoolElement(&reader, frame);
+                struct RUNTIME_FRAME_BLOCK peek = ExPop(frame);
 
                 void *dataPointer = peek.descriptor;
                 dataPointer += sizeof(struct OBJECT_HEADER);
 
-                struct FRAME_BLOCK unboxed = {
+                struct RUNTIME_FRAME_BLOCK unboxed = {
                     unboxed.type = MACHINE_OBJECT,
                     unboxed.link.type = loadTarget
                 };
@@ -2717,13 +2974,13 @@ ExceptionHandlingZoneEnd:
                     case BASE_INT32:
                     {
                         unboxed.type = MACHINE_INT32;
-                        memcpy(&unboxed.int32, dataPointer, loadTarget->size);
+                        PalMemoryCopy(&unboxed.int32, dataPointer, loadTarget->size);
                         break;
                     }
                     case BASE_INT64:
                     {
                         unboxed.type = MACHINE_INT64;
-                        memcpy(&unboxed.int64, dataPointer, loadTarget->size);
+                        PalMemoryCopy(&unboxed.int64, dataPointer, loadTarget->size);
                         break;
                     }
                     case BASE_SINGLE:
@@ -2743,7 +3000,7 @@ ExceptionHandlingZoneEnd:
                     case BASE_INTPTR:
                     {
                         unboxed.type = MACHINE_INTPTR;
-                        memcpy(&unboxed.pointer, dataPointer, loadTarget->size);
+                        PalMemoryCopy(&unboxed.pointer, dataPointer, loadTarget->size);
                         break;
                     }
                     case BASE_OTHER:
@@ -2751,7 +3008,7 @@ ExceptionHandlingZoneEnd:
                         unboxed.type = MACHINE_STRUCT;
                         unboxed.valueType.type = loadTarget;
                         unboxed.valueType.pointer = PalStackAllocate(loadTarget->size);
-                        memcpy(unboxed.valueType.pointer, dataPointer, loadTarget->size);
+                        PalMemoryCopy(unboxed.valueType.pointer, dataPointer, loadTarget->size);
                         break;
                     }
                     default:
@@ -2768,7 +3025,7 @@ ExceptionHandlingZoneEnd:
             case OpRethrowException:
             case OpThrowException:
             {
-                struct FRAME_BLOCK block = ExPop(frame);
+                struct RUNTIME_FRAME_BLOCK block = ExPop(frame);
 
                 if (MARX_SUCCESS(ExNullCheck(block)))
                 {
@@ -2789,7 +3046,7 @@ ExceptionHandlingZoneEnd:
             }
             case OpLeaveException:
             {
-                struct HANDLER finallyHandler;
+                struct RUNTIME_EXCEPTION_HANDLER finallyHandler;
                 if (MARX_SUCCESS(ExLocateFinally(&finallyHandler,frame)))
                 {
                     RtlReaderSet(&reader, finallyHandler.handlerStart);

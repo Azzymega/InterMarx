@@ -1,15 +1,16 @@
-#include <ex/ex.h>
-#include <ex/runtime.h>
-#include <pal/pal.h>
-#include <math.h>
 
-VOID* ExGetPoolElement(struct READER *reader, struct FRAME *frame)
+#include <math.h>
+#include <intermarx/ex/ex.h>
+#include <intermarx/ex/runtime.h>
+#include <intermarx/pal/pal.h>
+
+VOID* ExGetPoolElement(struct READER *reader, struct RUNTIME_FRAME *frame)
 {
     UINT32 index = RtlReaderReadInt32(reader);
     return RtlVectorGet(&frame->method->pool,index);
 }
 
-MARX_STATUS ExIsInstance(struct TYPE *castTarget, struct TYPE *objectType)
+MARX_STATUS ExIsInstance(struct RUNTIME_TYPE *castTarget, struct RUNTIME_TYPE *objectType)
 {
     BOOLEAN casted = FALSE;
     if (ExMetadataIs(castTarget->metadata, MxExMetadataInterface))
@@ -24,7 +25,7 @@ MARX_STATUS ExIsInstance(struct TYPE *castTarget, struct TYPE *objectType)
     }
     if (ExMetadataIs(castTarget->metadata, MxExMetadataEnum))
     {
-        struct FIELD *firstField = RtlVectorGet(&castTarget->fields, 0);
+        struct RUNTIME_FIELD *firstField = RtlVectorGet(&castTarget->fields, 0);
         if (firstField->declared == objectType)
         {
             casted = TRUE;
@@ -37,16 +38,16 @@ MARX_STATUS ExIsInstance(struct TYPE *castTarget, struct TYPE *objectType)
             if (objectType == castTarget)
             {
                 casted = TRUE;
-                return STATUS_SUCCESS;
+                return MARX_STATUS_SUCCESS;
             }
             objectType = objectType->super;
         }
     }
 
-    return STATUS_FAIL;
+    return MARX_STATUS_FAIL;
 }
 
-BOOLEAN ExIsZero(struct FRAME_BLOCK first)
+BOOLEAN ExIsZero(struct RUNTIME_FRAME_BLOCK first)
 {
     switch (first.type)
     {
@@ -76,12 +77,12 @@ BOOLEAN ExIsZero(struct FRAME_BLOCK first)
     return 0;
 }
 
-BOOLEAN ExIsNonZero(struct FRAME_BLOCK first)
+BOOLEAN ExIsNonZero(struct RUNTIME_FRAME_BLOCK first)
 {
     return !ExIsZero(first);
 }
 
-BOOLEAN ExIsEquals(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+BOOLEAN ExIsEquals(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
     switch (first.type)
     {
@@ -209,12 +210,12 @@ BOOLEAN ExIsEquals(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
     return FALSE;
 }
 
-BOOLEAN ExIsUnEquals(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+BOOLEAN ExIsUnEquals(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
     return !ExIsEquals(first, second);
 }
 
-BOOLEAN ExIsGreaterEquals(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+BOOLEAN ExIsGreaterEquals(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
     switch (first.type)
     {
@@ -317,7 +318,7 @@ BOOLEAN ExIsGreaterEquals(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
     return FALSE;
 }
 
-BOOLEAN ExIsGreater(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+BOOLEAN ExIsGreater(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
     switch (first.type)
     {
@@ -436,7 +437,7 @@ BOOLEAN ExIsGreater(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
     return FALSE;
 }
 
-BOOLEAN ExIsLowerEquals(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+BOOLEAN ExIsLowerEquals(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
     switch (first.type)
     {
@@ -539,7 +540,7 @@ BOOLEAN ExIsLowerEquals(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
     return FALSE;
 }
 
-BOOLEAN ExIsLower(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+BOOLEAN ExIsLower(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
     switch (first.type)
     {
@@ -640,7 +641,7 @@ BOOLEAN ExIsLower(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
     return FALSE;
 }
 
-struct FRAME_BLOCK ExConvMFloat(struct FRAME_BLOCK first)
+struct RUNTIME_FRAME_BLOCK ExConvMFloat(struct RUNTIME_FRAME_BLOCK first)
 {
     switch (first.type)
     {
@@ -669,7 +670,7 @@ struct FRAME_BLOCK ExConvMFloat(struct FRAME_BLOCK first)
     return first;
 }
 
-struct FRAME_BLOCK ExConvI64(struct FRAME_BLOCK first)
+struct RUNTIME_FRAME_BLOCK ExConvI64(struct RUNTIME_FRAME_BLOCK first)
 {
     switch (first.type)
     {
@@ -698,7 +699,7 @@ struct FRAME_BLOCK ExConvI64(struct FRAME_BLOCK first)
     return first;
 }
 
-struct FRAME_BLOCK ExConvI32(struct FRAME_BLOCK first)
+struct RUNTIME_FRAME_BLOCK ExConvI32(struct RUNTIME_FRAME_BLOCK first)
 {
     switch (first.type)
     {
@@ -731,7 +732,7 @@ struct FRAME_BLOCK ExConvI32(struct FRAME_BLOCK first)
     return first;
 }
 
-struct FRAME_BLOCK ExConvI16(struct FRAME_BLOCK first)
+struct RUNTIME_FRAME_BLOCK ExConvI16(struct RUNTIME_FRAME_BLOCK first)
 {
     switch (first.type)
     {
@@ -766,7 +767,7 @@ struct FRAME_BLOCK ExConvI16(struct FRAME_BLOCK first)
     return first;
 }
 
-struct FRAME_BLOCK ExConvIntPtr(struct FRAME_BLOCK first)
+struct RUNTIME_FRAME_BLOCK ExConvIntPtr(struct RUNTIME_FRAME_BLOCK first)
 {
     switch (first.type)
     {
@@ -799,7 +800,7 @@ struct FRAME_BLOCK ExConvIntPtr(struct FRAME_BLOCK first)
     return first;
 }
 
-struct FRAME_BLOCK ExConvI8(struct FRAME_BLOCK first)
+struct RUNTIME_FRAME_BLOCK ExConvI8(struct RUNTIME_FRAME_BLOCK first)
 {
     switch (first.type)
     {
@@ -834,7 +835,7 @@ struct FRAME_BLOCK ExConvI8(struct FRAME_BLOCK first)
     return first;
 }
 
-struct FRAME_BLOCK ExNot(struct FRAME_BLOCK first)
+struct RUNTIME_FRAME_BLOCK ExNot(struct RUNTIME_FRAME_BLOCK first)
 {
     switch (first.type)
     {
@@ -860,7 +861,7 @@ struct FRAME_BLOCK ExNot(struct FRAME_BLOCK first)
     return first;
 }
 
-struct FRAME_BLOCK ExXor(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+struct RUNTIME_FRAME_BLOCK ExXor(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
     switch (first.type)
     {
@@ -886,7 +887,7 @@ struct FRAME_BLOCK ExXor(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
     return first;
 }
 
-struct FRAME_BLOCK ExOr(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+struct RUNTIME_FRAME_BLOCK ExOr(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
     switch (first.type)
     {
@@ -912,9 +913,9 @@ struct FRAME_BLOCK ExOr(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
     return first;
 }
 
-struct FRAME_BLOCK ExAnd(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+struct RUNTIME_FRAME_BLOCK ExAnd(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
-    struct FRAME_BLOCK result = {0};
+    struct RUNTIME_FRAME_BLOCK result = {0};
 
     switch (first.type)
     {
@@ -1000,9 +1001,9 @@ struct FRAME_BLOCK ExAnd(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
     return result;
 }
 
-struct FRAME_BLOCK ExShr(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+struct RUNTIME_FRAME_BLOCK ExShr(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
-    struct FRAME_BLOCK result = {0};
+    struct RUNTIME_FRAME_BLOCK result = {0};
 
     switch (first.type)
     {
@@ -1088,9 +1089,9 @@ struct FRAME_BLOCK ExShr(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
     return result;
 }
 
-struct FRAME_BLOCK ExShl(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+struct RUNTIME_FRAME_BLOCK ExShl(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
-    struct FRAME_BLOCK result = {0};
+    struct RUNTIME_FRAME_BLOCK result = {0};
 
     switch (first.type)
     {
@@ -1176,7 +1177,7 @@ struct FRAME_BLOCK ExShl(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
     return result;
 }
 
-struct FRAME_BLOCK ExNeg(struct FRAME_BLOCK first)
+struct RUNTIME_FRAME_BLOCK ExNeg(struct RUNTIME_FRAME_BLOCK first)
 {
     switch (first.type)
     {
@@ -1207,9 +1208,9 @@ struct FRAME_BLOCK ExNeg(struct FRAME_BLOCK first)
     return first;
 }
 
-struct FRAME_BLOCK ExRem(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+struct RUNTIME_FRAME_BLOCK ExRem(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
-    struct FRAME_BLOCK result = {0};
+    struct RUNTIME_FRAME_BLOCK result = {0};
 
     switch (first.type)
     {
@@ -1306,9 +1307,9 @@ struct FRAME_BLOCK ExRem(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
     return result;
 }
 
-struct FRAME_BLOCK ExMul(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+struct RUNTIME_FRAME_BLOCK ExMul(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
-    struct FRAME_BLOCK result = {0};
+    struct RUNTIME_FRAME_BLOCK result = {0};
 
     switch (first.type)
     {
@@ -1405,9 +1406,9 @@ struct FRAME_BLOCK ExMul(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
     return result;
 }
 
-struct FRAME_BLOCK ExDiv(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+struct RUNTIME_FRAME_BLOCK ExDiv(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
-    struct FRAME_BLOCK result = {0};
+    struct RUNTIME_FRAME_BLOCK result = {0};
 
     switch (first.type)
     {
@@ -1504,9 +1505,9 @@ struct FRAME_BLOCK ExDiv(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
     return result;
 }
 
-struct FRAME_BLOCK ExSub(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+struct RUNTIME_FRAME_BLOCK ExSub(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
-    struct FRAME_BLOCK result = {0};
+    struct RUNTIME_FRAME_BLOCK result = {0};
 
     switch (first.type)
     {
@@ -1633,9 +1634,9 @@ struct FRAME_BLOCK ExSub(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
     return result;
 }
 
-struct FRAME_BLOCK ExAdd(struct FRAME_BLOCK first, struct FRAME_BLOCK second)
+struct RUNTIME_FRAME_BLOCK ExAdd(struct RUNTIME_FRAME_BLOCK first, struct RUNTIME_FRAME_BLOCK second)
 {
-    struct FRAME_BLOCK result = {0};
+    struct RUNTIME_FRAME_BLOCK result = {0};
     switch (first.type)
     {
         case MACHINE_INT32:

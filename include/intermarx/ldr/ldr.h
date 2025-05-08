@@ -1,5 +1,5 @@
 #pragma once
-#include <intermarx.h>
+#include <intermarx/intermarx.h>
 
 enum SECTION_TYPE
 {
@@ -24,7 +24,7 @@ struct IMAGE_LOADER
     VOID* image;
     struct NSTRING* stringTable;
     VOID** sections;
-    struct DOMAIN* domain;
+    struct RUNTIME_DOMAIN* domain;
     UINTPTR offset;
 };
 
@@ -37,16 +37,16 @@ VOID* LdrLoadHandler(struct IMAGE_LOADER* thisPtr);
 VOID* LdrLoadAttribute(struct IMAGE_LOADER* thisPtr);
 VOID* LdrLoadArgument(struct IMAGE_LOADER* thisPtr);
 
-VOID LdrExecuteStaticConstructors(struct DOMAIN* thisPtr);
-VOID LdrExecuteAttributesConstructors(struct DOMAIN* thisPtr);
+VOID LdrExecuteStaticConstructors(struct RUNTIME_DOMAIN* thisPtr);
+VOID LdrExecuteAttributesConstructors(struct RUNTIME_DOMAIN* thisPtr);
 
 VOID LdrImageLoaderInitialize(struct IMAGE_LOADER* thisPtr, VOID* imageAddress);
 VOID LdrImageLoaderWind(struct IMAGE_LOADER* thisPtr, UINTPTR length);
 VOID LdrImageRead(struct IMAGE_LOADER* thisPtr, VOID* dest, UINTPTR length);
 UINT32 LdrImageReadIndex(struct IMAGE_LOADER* thisPtr);
 
-VOID LdrFillTypeInfo(struct DOMAIN* thisPtr);
-VOID LdrCalculateTypeSizes(struct DOMAIN* thisPtr);
-UINTPTR LdrCalculateTypeSize(struct TYPE* thisPtr);
+VOID LdrFillTypeInfo(struct RUNTIME_DOMAIN* thisPtr);
+VOID LdrCalculateTypeSizes(struct RUNTIME_DOMAIN* thisPtr);
+UINTPTR LdrCalculateTypeSize(struct RUNTIME_TYPE* thisPtr);
 
-struct DOMAIN* LdrLoadDomain(struct IMAGE_LOADER* thisPtr);
+struct RUNTIME_DOMAIN* LdrLoadDomain(struct IMAGE_LOADER* thisPtr);

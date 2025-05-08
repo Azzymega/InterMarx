@@ -1,5 +1,5 @@
-#include <hp/hp.h>
-#include <ob/ob.h>
+#include <intermarx/hp/hp.h>
+#include <intermarx/ob/ob.h>
 
 void * ObManagedArrayInitialize(UINTPTR elementCount, UINTPTR elementSize)
 {
@@ -15,7 +15,7 @@ VOID ObManagedAttributeInitialize(struct MANAGED_ATTRIBUTE *thisPtr)
     RtlVectorInitialize(&thisPtr->parametersList);
 }
 
-VOID ObManagedExceptionInitialize(struct MANAGED_EXCEPTION *thisPtr, struct TYPE *type, const WCHAR *message)
+VOID ObManagedExceptionInitialize(struct MANAGED_EXCEPTION *thisPtr, struct RUNTIME_TYPE *type, const WCHAR *message)
 {
     thisPtr->nativeMessage = message;
     thisPtr->header.forward = NULL;

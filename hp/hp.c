@@ -1,9 +1,8 @@
-#include <stdio.h>
-#include <hp/hp.h>
-#include <pal/pal.h>
-#include <mt/mt.h>
-#include <ex/ex.h>
-#include <pal/corelib.h>
+#include <intermarx/hp/hp.h>
+#include <intermarx/pal/pal.h>
+#include <intermarx/mt/mt.h>
+#include <intermarx/ex/ex.h>
+#include <intermarx/pal/corelib.h>
 
 #include "hpp.h"
 
@@ -41,18 +40,21 @@ VOID HpFreeNative(VOID *pointer)
     PalMemoryFree(pointer);
 }
 
-VOID HpRegisterRootField(struct FIELD *field)
+INT16 counter;
+
+VOID HpRegisterRootField(struct RUNTIME_FIELD *field)
 {
     RtlVectorAdd(&HpGlobalRootFieldList,field);
+    counter++;
 }
 
 VOID HppWaitSafepoint()
 {
-    struct THREAD* ownThread = MtThreadGetCurrent();
+    struct RUNTIME_THREAD* ownThread = MtThreadGetCurrent();
 
     for (int i = 0; i < MtGlobalThreadList.count; ++i)
     {
-        struct THREAD* thread = RtlVectorGet(&MtGlobalThreadList,i);
+        struct RUNTIME_THREAD* thread = RtlVectorGet(&MtGlobalThreadList,i);
 
         while (!thread->inSafePoint && thread != ownThread)
         {
@@ -135,7 +137,7 @@ VOID* HppTraceObject(struct OBJECT_HEADER* header)
     }
     else
     {
-        struct TYPE* objectType = header->type;
+        struct RUNTIME_TYPE* objectType = header->type;
 
         if (ExMetadataIs(objectType->metadata,MxExMetadataDelegate))
         {
@@ -144,7 +146,7 @@ VOID* HppTraceObject(struct OBJECT_HEADER* header)
 
         for (int i = 0; i < objectType->fields.count; ++i)
         {
-            struct FIELD* field = RtlVectorGet(&objectType->fields,i);
+            struct RUNTIME_FIELD* field = RtlVectorGet(&objectType->fields,i);
 
             VOID* objectPtr = (char*)header + sizeof(struct OBJECT_HEADER) + field->offset;
 
@@ -182,7 +184,7 @@ VOID* HppTraceObject(struct OBJECT_HEADER* header)
     }
 }
 
-VOID HppTraceField(struct FIELD* field)
+VOID HppTraceField(struct RUNTIME_FIELD* field)
 {
     if (ExMetadataIs(field->declared->metadata,MxExMetadataEnum) || ExMetadataIs(field->declared->metadata,MxExMetadataPrimitive))
     {
@@ -199,13 +201,15 @@ VOID HppTraceField(struct FIELD* field)
     }
 }
 
-VOID HppTraceStruct(VOID* structure, struct TYPE* type)
+VOID HppTraceStruct(VOID* structure, struct RUNTIME_TYPE* type)
 {
     for (int i = 0; i < type->fields.count; ++i)
     {
-        struct FIELD* field = RtlVectorGet(&type->fields,i);
+        struct RUNTIME_FIELD* field = RtlVectorGet(&type->fields,i);
 
-        if (ExMetadataIs(field->declared->metadata,MxExMetadataEnum) || ExMetadataIs(field->declared->metadata,MxExMetadataPrimitive))
+        if (ExMetadataIs(field->declared->metadata, MxExMetadataEnum) || ExMetadataIs(
+                field->declared->metadata,
+                MxExMetadataPrimitive) || ExMetadataIs(field->metadata, MxExMetadataStatic))
         {
             continue;
         }
@@ -221,11 +225,11 @@ VOID HppTraceStruct(VOID* structure, struct TYPE* type)
     }
 }
 
-VOID HppScanFrame(struct FRAME* frame)
+VOID HppScanFrame(struct RUNTIME_FRAME* frame)
 {
     for (int i = 0; i < frame->sp; ++i)
     {
-        struct FRAME_BLOCK* block = &frame->stack[i];
+        struct RUNTIME_FRAME_BLOCK* block = &frame->stack[i];
 
         if (block->type == MACHINE_OBJECT)
         {
@@ -243,7 +247,7 @@ VOID HppScanFrame(struct FRAME* frame)
 
     for (int i = 0; i < frame->method->variables.count; ++i)
     {
-        struct FRAME_BLOCK* block = &frame->variables[i];
+        struct RUNTIME_FRAME_BLOCK* block = &frame->variables[i];
 
         if (block->type == MACHINE_OBJECT)
         {
@@ -261,7 +265,7 @@ VOID HppScanFrame(struct FRAME* frame)
 
     for (int i = 0; i < frame->method->parameters.count; ++i)
     {
-        struct FRAME_BLOCK* block = &frame->args[i];
+        struct RUNTIME_FRAME_BLOCK* block = &frame->args[i];
 
         if (block->type == MACHINE_OBJECT)
         {
@@ -285,15 +289,15 @@ struct MANAGED_HEAP* HpGc()
 
     for (int i = 0; i < HpGlobalRootFieldList.count; ++i)
     {
-        struct FIELD* field = RtlVectorGet(&HpGlobalRootFieldList,i);
+        struct RUNTIME_FIELD* field = RtlVectorGet(&HpGlobalRootFieldList,i);
         HppTraceField(field);
     }
 
 
     for (int i = 0; i < MtGlobalThreadList.count; ++i)
     {
-        struct THREAD* thread = RtlVectorGet(&MtGlobalThreadList,i);
-        struct FRAME* frame = thread->firstFrame;
+        struct RUNTIME_THREAD* thread = RtlVectorGet(&MtGlobalThreadList,i);
+        struct RUNTIME_FRAME* frame = thread->firstFrame;
 
         while (frame != NULL)
         {
@@ -368,9 +372,9 @@ struct MANAGED_HEAP* HpGc()
 
 VOID HpManagedHeapInitialize(struct MANAGED_HEAP *thisPtr)
 {
-    thisPtr->start = PalMemoryAllocate(1024*26);
+    thisPtr->start = PalMemoryAllocate(1024*1024*2);
     thisPtr->current = thisPtr->start;
-    thisPtr->size = 1024*26;
+    thisPtr->size = 1024*1024*2;
     PalMonitorInitialize(&thisPtr->lock);
 }
 

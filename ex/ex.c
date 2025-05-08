@@ -1,14 +1,38 @@
-#include <ex/ex.h>
-#include <pal/pal.h>
-#include <rtl/rtl.h>
+#include <intermarx/ex/ex.h>
+#include <intermarx/pal/pal.h>
+#include <intermarx/rtl/rtl.h>
+#include <intermarx/ex/jit.h>
 
 INUGLOBAL UINTPTR ExGlobalDomainId;
 
-INUIMPORT struct TYPE *ExStringType;
-INUIMPORT struct TYPE *ExCharArrayType;
-INUIMPORT struct TYPE *ExCharType;
-INUIMPORT struct TYPE *ExThreadType;
+INUIMPORT struct RUNTIME_TYPE *ExStringType;
+INUIMPORT struct RUNTIME_TYPE *ExCharArrayType;
+INUIMPORT struct RUNTIME_TYPE *ExCharType;
+INUIMPORT struct RUNTIME_TYPE *ExThreadType;
 
+#define NEXT_OPCODE &opcodes[pc++]
+
+void ExJit(struct RUNTIME_METHOD *method)
+{
+    struct MACHINE_STATE state = {0};
+    struct OPCODE opcodes[1000];
+    memset(opcodes,0,sizeof opcodes);
+
+    UINTPTR pc = 0;
+
+    ExJitEmitStore(NEXT_OPCODE,&state.sp,&state.fp);
+    ExJitEmitImmediateInt(NEXT_OPCODE,&state.r1,sizeof(INTPTR));
+    ExJitEmitSub(NEXT_OPCODE,&state.sp,&state.r1,&state.sp);
+    ExJitEmitMove(NEXT_OPCODE,&state.sp,&state.fp);
+
+    struct READER reader;
+    RtlReaderInitialize(&reader,method->bytecode);
+
+    while (reader.offset < method->bytecodeLength)
+    {
+
+    }
+}
 
 BOOLEAN ExMetadataIs(enum METADATA_CHARACTERISTICS thisValue, enum METADATA_CHARACTERISTICS metadata)
 {
@@ -22,14 +46,14 @@ BOOLEAN ExMetadataIs(enum METADATA_CHARACTERISTICS thisValue, enum METADATA_CHAR
     }
 }
 
-VOID ExDomainInitialize(struct DOMAIN *thisPtr)
+VOID ExDomainInitialize(struct RUNTIME_DOMAIN *thisPtr)
 {
     thisPtr->id = ExGlobalDomainId++;
     RtlVectorInitialize(&thisPtr->threads);
     RtlVectorInitialize(&thisPtr->types);
 }
 
-VOID ExTypeInitialize(struct TYPE *thisPtr)
+VOID ExTypeInitialize(struct RUNTIME_TYPE *thisPtr)
 {
     thisPtr->descriptor = DESCRIPTOR_TYPE;
     thisPtr->super = NULL;
@@ -41,14 +65,14 @@ VOID ExTypeInitialize(struct TYPE *thisPtr)
     RtlVectorInitialize(&thisPtr->methods);
 }
 
-VOID ExFieldInitialize(struct FIELD *thisPtr)
+VOID ExFieldInitialize(struct RUNTIME_FIELD *thisPtr)
 {
     thisPtr->descriptor = DESCRIPTOR_FIELD;
 
     RtlVectorInitialize(&thisPtr->attributes);
 }
 
-VOID ExMethodInitialize(struct METHOD *thisPtr)
+VOID ExMethodInitialize(struct RUNTIME_METHOD *thisPtr)
 {
     thisPtr->descriptor = DESCRIPTOR_METHOD;
 
@@ -62,9 +86,9 @@ VOID ExMethodInitialize(struct METHOD *thisPtr)
     RtlVectorInitialize(&thisPtr->stringTable);
 }
 
-VOID ExThreadInitialize(struct THREAD *thisPtr, struct DOMAIN* domain)
+VOID ExThreadInitialize(struct RUNTIME_THREAD *thisPtr, struct RUNTIME_DOMAIN* domain)
 {
-    PalMemoryZero(thisPtr,sizeof(struct THREAD));
+    PalMemoryZero(thisPtr,sizeof(struct RUNTIME_THREAD));
 
     thisPtr->handle = PalThreadGetCurrentHandle();
     thisPtr->id = PalThreadGetCurrentId();
@@ -80,7 +104,7 @@ VOID ExExceptionStateInitialize(struct EXCEPTION_STATE *thisPtr)
     RtlVectorInitialize(&thisPtr->stackTrace);
 }
 
-void ExExceptionStateAppend(struct EXCEPTION_STATE *thisPtr, struct METHOD *method)
+void ExExceptionStateAppend(struct EXCEPTION_STATE *thisPtr, struct RUNTIME_METHOD *method)
 {
     RtlVectorAdd(&thisPtr->stackTrace,&method->fullName);
 }
@@ -90,11 +114,11 @@ void ExExceptionStateDrop(struct EXCEPTION_STATE *thisPtr)
     thisPtr->stackTrace.count = 0;
 }
 
-struct METHOD * ExTypeLocateMethod(struct TYPE *thisPtr, const CHAR *shortName)
+struct RUNTIME_METHOD * ExTypeLocateMethod(struct RUNTIME_TYPE *thisPtr, const CHAR *shortName)
 {
     for (int i = 0; i < thisPtr->methods.count; ++i)
     {
-        struct METHOD* method = RtlVectorGet(&thisPtr->methods,i);
+        struct RUNTIME_METHOD* method = RtlVectorGet(&thisPtr->methods,i);
 
         if (RtlNStringCompare(method->shortName,shortName))
         {
@@ -105,11 +129,11 @@ struct METHOD * ExTypeLocateMethod(struct TYPE *thisPtr, const CHAR *shortName)
     return NULL;
 }
 
-struct TYPE * ExDomainLocateType(struct DOMAIN *thisPtr, const CHAR *string)
+struct RUNTIME_TYPE * ExDomainLocateType(struct RUNTIME_DOMAIN *thisPtr, const CHAR *string)
 {
     for (int i = 0; i < thisPtr->types.count; ++i)
     {
-        struct TYPE* type = RtlVectorGet(&thisPtr->types,i);
+        struct RUNTIME_TYPE* type = RtlVectorGet(&thisPtr->types,i);
         if (RtlNStringCompare(type->fullName,string))
         {
             return type;

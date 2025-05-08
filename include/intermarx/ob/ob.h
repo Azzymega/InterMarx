@@ -1,15 +1,17 @@
 #pragma once
-#include <intermarx.h>
-#include <rtl/rtl.h>
-#include <far/far.h>
-#include <hp/hp.h>
+#include <intermarx/intermarx.h>
+#include <intermarx/rtl/rtl.h>
+#include <intermarx/far/far.h>
+#include <intermarx/hp/hp.h>
+#include <intermarx/ex/ex.h>
+#include <intermarx/intermarx.h>
 
-struct FIELD;
+struct RUNTIME_FIELD;
 
 struct OBJECT_HEADER
 {
     UINTPTR size;
-    struct TYPE* type;
+    struct RUNTIME_TYPE* type;
 
     UINTPTR interop : 1;
     UINTPTR managedWrapper : 1;
@@ -24,7 +26,7 @@ struct INUMANAGED INUPACKED MANAGED_ARRAY
 {
     struct OBJECT_HEADER header;
 
-    struct TYPE* elementType;
+    struct RUNTIME_TYPE* elementType;
     UINTPTR count;
 
     union
@@ -79,14 +81,14 @@ struct INUMANAGED INUPACKED MANAGED_ATTRIBUTE
 {
     struct OBJECT_HEADER header;
 
-    struct METHOD *ctor;
+    struct RUNTIME_METHOD *ctor;
 
     union
     {
         enum EXECUTIVE_OWNER_DESCRIPTOR *owner;
-        struct TYPE* typeOwner;
-        struct METHOD* methodOwner;
-        struct FIELD* fieldOwner;
+        struct RUNTIME_TYPE* typeOwner;
+        struct RUNTIME_METHOD* methodOwner;
+        struct RUNTIME_FIELD* fieldOwner;
     };
 
     struct VECTOR parametersList;
@@ -105,6 +107,6 @@ struct INUMANAGED INUPACKED FAR_CALL_MANAGED_ATTRIBUTE
 
 VOID* ObManagedArrayInitialize(UINTPTR elementCount, UINTPTR elementSize);
 VOID ObManagedAttributeInitialize(struct MANAGED_ATTRIBUTE* thisPtr);
-VOID ObManagedExceptionInitialize(struct MANAGED_EXCEPTION* thisPtr, struct TYPE* type, const WCHAR* message);
+VOID ObManagedExceptionInitialize(struct MANAGED_EXCEPTION* thisPtr, struct RUNTIME_TYPE* type, const WCHAR* message);
 VOID ObManagedWrapperInitialize(struct MANAGED_WRAPPER* thisPtr, VOID* nativeHandle);
 VOID ObManagedDelegateInitialize(struct MANAGED_DELEGATE* thisPtr, VOID** object, VOID** callSite, INTPTR entryCount, struct MANAGED_DELEGATE* base);

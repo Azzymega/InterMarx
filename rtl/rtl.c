@@ -1,6 +1,6 @@
-#include <hp/hp.h>
-#include <pal/pal.h>
-#include <rtl/rtl.h>
+#include <intermarx/hp/hp.h>
+#include <intermarx/pal/pal.h>
+#include <intermarx/rtl/rtl.h>
 
 #define RTL_VECTOR_BASE_SIZE 10
 

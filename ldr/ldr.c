@@ -1,17 +1,17 @@
-#include <ex/ex.h>
-#include <ex/runtime.h>
-#include <hp/hp.h>
-#include <ldr/ldr.h>
-#include <ob/ob.h>
-#include <pal/pal.h>
-#include <rtl/rtl.h>
+#include <intermarx/ex/ex.h>
+#include <intermarx/ex/runtime.h>
+#include <intermarx/hp/hp.h>
+#include <intermarx/ldr/ldr.h>
+#include <intermarx/ob/ob.h>
+#include <intermarx/pal/pal.h>
+#include <intermarx/rtl/rtl.h>
 
 #define LDR_MAGIC 0x50C1A715
 
-INUIMPORT struct TYPE *ExStringType;
-INUIMPORT struct TYPE *ExCharArrayType;
-INUIMPORT struct TYPE *ExCharType;
-INUIMPORT struct TYPE *ExThreadType;
+INUIMPORT struct RUNTIME_TYPE *ExStringType;
+INUIMPORT struct RUNTIME_TYPE *ExCharArrayType;
+INUIMPORT struct RUNTIME_TYPE *ExCharType;
+INUIMPORT struct RUNTIME_TYPE *ExThreadType;
 
 
 VOID *LdrLoadStringTable(struct IMAGE_LOADER *thisPtr)
@@ -46,11 +46,26 @@ VOID *LdrLoadStringTable(struct IMAGE_LOADER *thisPtr)
 
 VOID *LdrLoadType(struct IMAGE_LOADER *thisPtr)
 {
-    struct TYPE *type = HpAllocateNative(sizeof(struct TYPE));
+    struct RUNTIME_TYPE *type = HpAllocateNative(sizeof(struct RUNTIME_TYPE));
     ExTypeInitialize(type);
 
     type->fullName = thisPtr->stringTable[LdrImageReadIndex(thisPtr)];
     type->shortName = thisPtr->stringTable[LdrImageReadIndex(thisPtr)];
+
+    INT32 super = LdrImageReadIndex(thisPtr);
+    if (super != -1)
+    {
+        type->super = thisPtr->sections[super];
+    }
+
+    INT32 interfaceCount = LdrImageReadIndex(thisPtr);
+    for (int i = 0; i < interfaceCount; ++i)
+    {
+        RtlVectorAdd(&type->interfaces, thisPtr->sections[LdrImageReadIndex(thisPtr)]);
+    }
+
+    type->metadata = LdrImageReadIndex(thisPtr);
+
 
     if (RtlNStringCompare(type->fullName, ExByteTypeName))
     {
@@ -104,7 +119,7 @@ VOID *LdrLoadType(struct IMAGE_LOADER *thisPtr)
     {
         type->inlined = BASE_INTPTR;
     }
-    else if (RtlNStringCompare(type->fullName, ExIntPtrTypeName))
+    else if (RtlNStringCompare(type->fullName, ExIntPtrTypeName) || ExMetadataIs(type->metadata,MxExMetadataPointer))
     {
         type->inlined = BASE_INTPTR;
     }
@@ -117,26 +132,13 @@ VOID *LdrLoadType(struct IMAGE_LOADER *thisPtr)
         type->inlined = BASE_OTHER;
     }
 
-    INT32 super = LdrImageReadIndex(thisPtr);
-    if (super != -1)
-    {
-        type->super = thisPtr->sections[super];
-    }
-
-    INT32 interfaceCount = LdrImageReadIndex(thisPtr);
-    for (int i = 0; i < interfaceCount; ++i)
-    {
-        RtlVectorAdd(&type->interfaces, thisPtr->sections[LdrImageReadIndex(thisPtr)]);
-    }
-
-    type->metadata = LdrImageReadIndex(thisPtr);
 
     return type;
 }
 
 VOID *LdrLoadField(struct IMAGE_LOADER *thisPtr)
 {
-    struct FIELD *field = HpAllocateNative(sizeof(struct FIELD));
+    struct RUNTIME_FIELD *field = HpAllocateNative(sizeof(struct RUNTIME_FIELD));
     ExFieldInitialize(field);
 
     field->fullName = thisPtr->stringTable[LdrImageReadIndex(thisPtr)];
@@ -157,7 +159,7 @@ VOID *LdrLoadField(struct IMAGE_LOADER *thisPtr)
 
 VOID *LdrLoadMethod(struct IMAGE_LOADER *thisPtr)
 {
-    struct METHOD *method = HpAllocateNative(sizeof(struct METHOD));
+    struct RUNTIME_METHOD *method = HpAllocateNative(sizeof(struct RUNTIME_METHOD));
     ExMethodInitialize(method);
 
     method->fullName = thisPtr->stringTable[LdrImageReadIndex(thisPtr)];
@@ -187,7 +189,7 @@ VOID *LdrLoadMethod(struct IMAGE_LOADER *thisPtr)
 
 VOID *LdrLoadExecutable(struct IMAGE_LOADER *thisPtr)
 {
-    struct METHOD *owner = thisPtr->sections[LdrImageReadIndex(thisPtr)];
+    struct RUNTIME_METHOD *owner = thisPtr->sections[LdrImageReadIndex(thisPtr)];
 
     INT32 poolTypeSize = LdrImageReadIndex(thisPtr);
     for (int i = 0; i < poolTypeSize; ++i)
@@ -217,6 +219,7 @@ VOID *LdrLoadExecutable(struct IMAGE_LOADER *thisPtr)
 
     INT32 imageLength = LdrImageReadIndex(thisPtr);
     owner->bytecode = HpAllocateNative(imageLength);
+    owner->bytecodeLength = imageLength;
     LdrImageRead(thisPtr, owner->bytecode, imageLength);
 
     return owner;
@@ -224,7 +227,7 @@ VOID *LdrLoadExecutable(struct IMAGE_LOADER *thisPtr)
 
 VOID *LdrLoadHandler(struct IMAGE_LOADER *thisPtr)
 {
-    struct HANDLER *handler = HpAllocateNative(sizeof(struct HANDLER));
+    struct RUNTIME_EXCEPTION_HANDLER *handler = HpAllocateNative(sizeof(struct RUNTIME_EXCEPTION_HANDLER));
 
     handler->handler = LdrImageReadIndex(thisPtr);
 
@@ -251,9 +254,9 @@ VOID *LdrLoadHandler(struct IMAGE_LOADER *thisPtr)
 VOID *LdrLoadAttribute(struct IMAGE_LOADER *thisPtr)
 {
     enum EXECUTIVE_OWNER_DESCRIPTOR *descriptor = thisPtr->sections[LdrImageReadIndex(thisPtr)];
-    struct TYPE *declared = thisPtr->sections[LdrImageReadIndex(thisPtr)];
+    struct RUNTIME_TYPE *declared = thisPtr->sections[LdrImageReadIndex(thisPtr)];
 
-    struct MANAGED_ATTRIBUTE *attribute = HpAllocateManaged(sizeof(struct MANAGED_ATTRIBUTE)+150); // TODO: BAD HACK! SCAN TYPE SIZES BEFORE LOADING ATTRIBUTES!
+    struct MANAGED_ATTRIBUTE *attribute = HpAllocateManaged(sizeof(struct MANAGED_ATTRIBUTE)+150); // TODO: BAD HACK! SCAN RUNTIME_TYPE SIZES BEFORE LOADING ATTRIBUTES!
     ObManagedAttributeInitialize(attribute);
 
     attribute->owner = descriptor;
@@ -265,19 +268,19 @@ VOID *LdrLoadAttribute(struct IMAGE_LOADER *thisPtr)
     {
         case DESCRIPTOR_TYPE:
         {
-            struct TYPE *value = (struct TYPE *) attribute->owner;
+            struct RUNTIME_TYPE *value = (struct RUNTIME_TYPE *) attribute->owner;
             RtlVectorAdd(&value->attributes, attribute);
             break;
         }
         case DESCRIPTOR_FIELD:
         {
-            struct FIELD *value = (struct FIELD *) attribute->owner;
+            struct RUNTIME_FIELD *value = (struct RUNTIME_FIELD *) attribute->owner;
             RtlVectorAdd(&value->attributes, attribute);
             break;
         }
         case DESCRIPTOR_METHOD:
         {
-            struct METHOD *value = (struct METHOD *) attribute->owner;
+            struct RUNTIME_METHOD *value = (struct RUNTIME_METHOD *) attribute->owner;
             RtlVectorAdd(&value->attributes, attribute);
             break;
         }
@@ -294,7 +297,7 @@ VOID *LdrLoadAttribute(struct IMAGE_LOADER *thisPtr)
 VOID *LdrLoadArgument(struct IMAGE_LOADER *thisPtr)
 {
     struct MANAGED_ATTRIBUTE *owner = thisPtr->sections[LdrImageReadIndex(thisPtr)];
-    struct TYPE *declared = thisPtr->sections[LdrImageReadIndex(thisPtr)];
+    struct RUNTIME_TYPE *declared = thisPtr->sections[LdrImageReadIndex(thisPtr)];
 
     RtlVectorAdd(&owner->params, declared);
 
@@ -336,7 +339,7 @@ VOID *LdrLoadArgument(struct IMAGE_LOADER *thisPtr)
     }
     else if (ExMetadataIs(declared->metadata, MxExMetadataEnum))
     {
-        struct FIELD *firstField = RtlVectorGet(&declared->fields, 0);
+        struct RUNTIME_FIELD *firstField = RtlVectorGet(&declared->fields, 0);
 
         if (RtlNStringCompare(firstField->declared->fullName, ExInt32TypeName))
         {
@@ -363,43 +366,43 @@ VOID *LdrLoadArgument(struct IMAGE_LOADER *thisPtr)
     return owner;
 }
 
-VOID LdrExecuteStaticConstructors(struct DOMAIN *thisPtr)
+VOID LdrExecuteStaticConstructors(struct RUNTIME_DOMAIN *thisPtr)
 {
     for (INTPTR i = 0; i < thisPtr->types.count; ++i)
     {
-        struct TYPE *type = RtlVectorGet(&thisPtr->types, i);
+        struct RUNTIME_TYPE *type = RtlVectorGet(&thisPtr->types, i);
 
         for (INTPTR j = 0; j < type->methods.count; ++j)
         {
-            struct METHOD *method = RtlVectorGet(&type->methods, j);
+            struct RUNTIME_METHOD *method = RtlVectorGet(&type->methods, j);
 
             if (RtlNStringContainsNative(method->fullName, ".cctor"))
             {
-                struct FRAME_BLOCK ret;
+                struct RUNTIME_FRAME_BLOCK ret;
                 ExMethodPrologueArgs(method,NULL,NULL, &ret);
             }
         }
     }
 }
 
-VOID LdrExecuteAttributesConstructors(struct DOMAIN *thisPtr)
+VOID LdrExecuteAttributesConstructors(struct RUNTIME_DOMAIN *thisPtr)
 {
     for (INTPTR i = 0; i < thisPtr->types.count; ++i)
     {
-        struct TYPE *type = RtlVectorGet(&thisPtr->types, i);
+        struct RUNTIME_TYPE *type = RtlVectorGet(&thisPtr->types, i);
 
         for (INTPTR j = 0; j < type->attributes.count; ++j)
         {
             struct MANAGED_ATTRIBUTE *attribute = RtlVectorGet(&type->attributes, j);
 
-            struct FRAME_BLOCK parameters[attribute->ctor->parameters.count];
+            struct RUNTIME_FRAME_BLOCK parameters[attribute->ctor->parameters.count];
 
             parameters[0].type = MACHINE_OBJECT;
             parameters[0].descriptor = attribute;
 
             for (int z = attribute->params.count; z >= 1; --z)
             {
-                struct TYPE *paramType = RtlVectorGet(&attribute->params, z - 1);
+                struct RUNTIME_TYPE *paramType = RtlVectorGet(&attribute->params, z - 1);
 
                 if (paramType->inlined == BASE_INT32)
                 {
@@ -434,7 +437,7 @@ VOID LdrExecuteAttributesConstructors(struct DOMAIN *thisPtr)
                 }
                 else if (ExMetadataIs(paramType->metadata, MxExMetadataEnum))
                 {
-                    struct FIELD *field = RtlVectorGet(&paramType->fields, 0);
+                    struct RUNTIME_FIELD *field = RtlVectorGet(&paramType->fields, 0);
                     if (field->declared->inlined == BASE_INT32)
                     {
                         const struct MANAGED_ARRAY *arg = RtlVectorGet(&attribute->parametersList, z - 1);
@@ -452,26 +455,26 @@ VOID LdrExecuteAttributesConstructors(struct DOMAIN *thisPtr)
                 }
             }
 
-            struct FRAME_BLOCK ret;
+            struct RUNTIME_FRAME_BLOCK ret;
             ExMethodPrologueArgs(attribute->ctor, parameters,NULL, &ret);
         }
 
         for (UINTPTR l = 0; l < type->methods.count; ++l)
         {
-            struct METHOD *method = RtlVectorGet(&type->methods, l);
+            struct RUNTIME_METHOD *method = RtlVectorGet(&type->methods, l);
 
             for (UINTPTR j = 0; j < method->attributes.count; ++j)
             {
                 struct MANAGED_ATTRIBUTE *attribute = RtlVectorGet(&method->attributes, j);
 
-                struct FRAME_BLOCK parameters[attribute->ctor->parameters.count];
+                struct RUNTIME_FRAME_BLOCK parameters[attribute->ctor->parameters.count];
 
                 parameters[0].type = MACHINE_OBJECT;
                 parameters[0].descriptor = attribute;
 
                 for (int z = attribute->params.count; z >= 1; --z)
                 {
-                    struct TYPE *paramType = RtlVectorGet(&attribute->params, z - 1);
+                    struct RUNTIME_TYPE *paramType = RtlVectorGet(&attribute->params, z - 1);
 
                     if (paramType->inlined == BASE_INT32)
                     {
@@ -506,7 +509,7 @@ VOID LdrExecuteAttributesConstructors(struct DOMAIN *thisPtr)
                     }
                     else if (ExMetadataIs(paramType->metadata, MxExMetadataEnum))
                     {
-                        struct FIELD *enumField = RtlVectorGet(&paramType->fields, 0);
+                        struct RUNTIME_FIELD *enumField = RtlVectorGet(&paramType->fields, 0);
                         if (enumField->declared->inlined == BASE_INT32)
                         {
                             const struct MANAGED_ARRAY *arg = RtlVectorGet(&attribute->parametersList, z - 1);
@@ -524,27 +527,27 @@ VOID LdrExecuteAttributesConstructors(struct DOMAIN *thisPtr)
                     }
                 }
 
-                struct FRAME_BLOCK ret;
+                struct RUNTIME_FRAME_BLOCK ret;
                 ExMethodPrologueArgs(attribute->ctor, parameters,NULL, &ret);
             }
         }
 
         for (UINTPTR l = 0; l < type->fields.count; ++l)
         {
-            struct FIELD *field = RtlVectorGet(&type->fields, l);
+            struct RUNTIME_FIELD *field = RtlVectorGet(&type->fields, l);
 
             for (UINTPTR j = 0; j < field->attributes.count; ++j)
             {
                 struct MANAGED_ATTRIBUTE *attribute = RtlVectorGet(&field->attributes, j);
 
-                struct FRAME_BLOCK parameters[attribute->ctor->parameters.count];
+                struct RUNTIME_FRAME_BLOCK parameters[attribute->ctor->parameters.count];
 
                 parameters[0].type = MACHINE_OBJECT;
                 parameters[0].descriptor = attribute;
 
                 for (int z = attribute->params.count; z >= 1; --z)
                 {
-                    struct TYPE *paramType = RtlVectorGet(&attribute->params, z - 1);
+                    struct RUNTIME_TYPE *paramType = RtlVectorGet(&attribute->params, z - 1);
 
                     if (paramType->inlined == BASE_INT32)
                     {
@@ -579,7 +582,7 @@ VOID LdrExecuteAttributesConstructors(struct DOMAIN *thisPtr)
                     }
                     else if (ExMetadataIs(paramType->metadata, MxExMetadataEnum))
                     {
-                        struct FIELD *enumField = RtlVectorGet(&paramType->fields, 0);
+                        struct RUNTIME_FIELD *enumField = RtlVectorGet(&paramType->fields, 0);
                         if (enumField->declared->inlined == BASE_INT32)
                         {
                             const struct MANAGED_ARRAY *arg = RtlVectorGet(&attribute->parametersList, z - 1);
@@ -597,7 +600,7 @@ VOID LdrExecuteAttributesConstructors(struct DOMAIN *thisPtr)
                     }
                 }
 
-                struct FRAME_BLOCK ret;
+                struct RUNTIME_FRAME_BLOCK ret;
                 ExMethodPrologueArgs(attribute->ctor, parameters,NULL, &ret);
             }
         }
@@ -628,25 +631,25 @@ UINT32 LdrImageReadIndex(struct IMAGE_LOADER *thisPtr)
     return index;
 }
 
-VOID LdrCalculateTypeSizes(struct DOMAIN *thisPtr)
+VOID LdrCalculateTypeSizes(struct RUNTIME_DOMAIN *thisPtr)
 {
     for (int i = 0; i < thisPtr->types.count; ++i)
     {
-        struct TYPE *type = RtlVectorGet(&thisPtr->types, i);
+        struct RUNTIME_TYPE *type = RtlVectorGet(&thisPtr->types, i);
 
         type->size = LdrCalculateTypeSize(type);
     }
 }
 
-VOID LdrFillTypeInfo(struct DOMAIN *thisPtr)
+VOID LdrFillTypeInfo(struct RUNTIME_DOMAIN *thisPtr)
 {
     for (int i = 0; i < thisPtr->types.count; ++i)
     {
-        struct TYPE *type = RtlVectorGet(&thisPtr->types, i);
+        struct RUNTIME_TYPE *type = RtlVectorGet(&thisPtr->types, i);
 
         for (int j = 0; j < type->methods.count; ++j)
         {
-            struct METHOD* method = RtlVectorGet(&type->methods,j);
+            struct RUNTIME_METHOD* method = RtlVectorGet(&type->methods,j);
 
             if (RtlNStringCompare(method->shortName,"Finalize"))
             {
@@ -656,7 +659,7 @@ VOID LdrFillTypeInfo(struct DOMAIN *thisPtr)
     }
 }
 
-UINTPTR LdrCalculateFieldSize(struct FIELD* thisPtr)
+UINTPTR LdrCalculateFieldSize(struct RUNTIME_FIELD* thisPtr)
 {
     if (RtlNStringCompare(thisPtr->declared->fullName, ExByteTypeName))
     {
@@ -731,7 +734,7 @@ UINTPTR LdrCalculateFieldSize(struct FIELD* thisPtr)
     }
 }
 
-UINTPTR LdrCalculateTypeSize(struct TYPE *thisPtr)
+UINTPTR LdrCalculateTypeSize(struct RUNTIME_TYPE *thisPtr)
 {
     UINTPTR structSize = 0;
 
@@ -742,7 +745,7 @@ UINTPTR LdrCalculateTypeSize(struct TYPE *thisPtr)
 
     for (UINTPTR i = 0; i < thisPtr->fields.count; i++)
     {
-        struct FIELD* field = RtlVectorGet(&thisPtr->fields, i);
+        struct RUNTIME_FIELD* field = RtlVectorGet(&thisPtr->fields, i);
 
         if (ExMetadataIs(field->metadata, MxExMetadataStatic))
         {
@@ -752,22 +755,33 @@ UINTPTR LdrCalculateTypeSize(struct TYPE *thisPtr)
         }
         else
         {
-            UINTPTR size = LdrCalculateFieldSize(field);
-            UINTPTR alignedOffset = (structSize + size - 1) / size * size;
-            structSize = alignedOffset;
+            if (ExMetadataIs(field->declared->metadata,MxExMetadataSequential))
+            {
+                UINTPTR size = LdrCalculateFieldSize(field);
 
-            field->offset = structSize;
-            field->dataSize = size;
-            structSize += size;
+                field->offset = structSize;
+                field->dataSize = size;
+                structSize += size;
+            }
+            else
+            {
+                UINTPTR size = LdrCalculateFieldSize(field);
+                UINTPTR alignedOffset = (structSize + size - 1) / size * size;
+                structSize = alignedOffset;
+
+                field->offset = structSize;
+                field->dataSize = size;
+                structSize += size;
+            }
         }
     }
 
     return structSize;
 }
 
-struct DOMAIN *LdrLoadDomain(struct IMAGE_LOADER *thisPtr)
+struct RUNTIME_DOMAIN *LdrLoadDomain(struct IMAGE_LOADER *thisPtr)
 {
-    struct DOMAIN *domain = HpAllocateNative(sizeof(struct DOMAIN));
+    struct RUNTIME_DOMAIN *domain = HpAllocateNative(sizeof(struct RUNTIME_DOMAIN));
     ExDomainInitialize(domain);
 
     UINT32 magic;
@@ -790,7 +804,7 @@ struct DOMAIN *LdrLoadDomain(struct IMAGE_LOADER *thisPtr)
 
     for (int i = 0; i < sectionCount; ++i)
     {
-        struct LOADER_SECTION section;
+        struct LOADER_SECTION section = {0};
         LdrImageRead(thisPtr, &section, sizeof section);
 
         UINTPTR prevOffset = thisPtr->offset;
@@ -810,7 +824,7 @@ struct DOMAIN *LdrLoadDomain(struct IMAGE_LOADER *thisPtr)
 
             case NlSectionType:
             {
-                struct TYPE *loadedType = LdrLoadType(thisPtr);
+                struct RUNTIME_TYPE *loadedType = LdrLoadType(thisPtr);
                 sections[i] = loadedType;
                 loadedType->domain = domain;
                 RtlVectorAdd(&domain->types, sections[i]);
@@ -818,7 +832,7 @@ struct DOMAIN *LdrLoadDomain(struct IMAGE_LOADER *thisPtr)
             }
             case NldSectionField:
             {
-                struct FIELD *value = LdrLoadField(thisPtr);
+                struct RUNTIME_FIELD *value = LdrLoadField(thisPtr);
                 sections[i] = value;
                 break;
             }
@@ -862,6 +876,16 @@ struct DOMAIN *LdrLoadDomain(struct IMAGE_LOADER *thisPtr)
 
     LdrCalculateTypeSizes(domain);
     LdrFillTypeInfo(domain);
+
+    for (int i = 0; i < domain->types.count; ++i)
+    {
+        struct RUNTIME_TYPE* type = RtlVectorGet(&domain->types,i);
+        for (int j = 0; j < type->methods.count; ++j)
+        {
+            struct RUNTIME_METHOD* method = RtlVectorGet(&type->methods,j);
+            ExJit(method);
+        }
+    }
 
     return domain;
 }

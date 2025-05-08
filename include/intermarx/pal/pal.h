@@ -1,5 +1,5 @@
 #pragma once
-#include <intermarx.h>
+#include <intermarx/intermarx.h>
 #include <windows.h>
 
 #define PalStackAllocate(length) __builtin_alloca(length)

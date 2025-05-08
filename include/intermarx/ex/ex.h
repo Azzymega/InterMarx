@@ -1,12 +1,12 @@
 #pragma once
-#include <intermarx.h>
-#include <far/far.h>
-#include <ex/ex.h>
-#include <ob/ob.h>
-#include <rtl/rtl.h>
+#include <intermarx/intermarx.h>
+#include <intermarx/far/far.h>
+#include <intermarx/ex/ex.h>
+#include <intermarx/ob/ob.h>
+#include <intermarx/rtl/rtl.h>
 
 struct EXCEPTION_STATE;
-struct FRAME;
+struct RUNTIME_FRAME;
 struct MANAGED_WRAPPER;
 
 //
@@ -89,7 +89,8 @@ enum METADATA_CHARACTERISTICS
     MxExMetadataInitialize   = 16777216,
     MxExMetadataReference    = 33554432,
     MxExMetadataShapeshifter = 67108864,
-    MxExMetadataTemplate     = 134217728
+    MxExMetadataTemplate     = 134217728,
+    MxExMetadataSequential   = 268435456
 };
 
 
@@ -128,6 +129,8 @@ enum BYTECODE : BYTE
     OpLoadLocalVariableAddress,
     OpLoadArgumentAddress,
     OpLoadValueFromPointer,
+    OpStoreValueToPointer,
+    OpLoadAddressOfArrayElement,
 
     OpLoadValueField,
     OpLoadStaticField,
@@ -232,7 +235,7 @@ struct EXCEPTION_STATE
     struct VECTOR stackTrace;
 };
 
-struct TYPE
+struct RUNTIME_TYPE
 {
     enum EXECUTIVE_OWNER_DESCRIPTOR descriptor;
     struct VECTOR attributes;
@@ -243,8 +246,8 @@ struct TYPE
     enum BASE_TYPE_SYSTEM_TYPE inlined;
     enum METADATA_CHARACTERISTICS metadata;
 
-    struct TYPE* super;
-    struct DOMAIN* domain;
+    struct RUNTIME_TYPE* super;
+    struct RUNTIME_DOMAIN* domain;
 
     struct VECTOR interfaces;
     struct VECTOR fields;
@@ -254,7 +257,7 @@ struct TYPE
     struct NSTRING shortName;
 };
 
-struct DOMAIN
+struct RUNTIME_DOMAIN
 {
     UINTPTR id;
 
@@ -262,23 +265,23 @@ struct DOMAIN
     struct VECTOR threads;
 };
 
-struct THREAD
+struct RUNTIME_THREAD
 {
     UINTPTR id;
     NATIVE_HANDLE handle;
     BOOLEAN inSafePoint;
 
-    struct DOMAIN* domain;
+    struct RUNTIME_DOMAIN* domain;
     struct EXCEPTION_STATE state;
 
     struct MANAGED_WRAPPER* wrapper;
     struct MANAGED_DELEGATE* delegate;
 
-    struct FRAME* currentFrame;
-    struct FRAME* firstFrame;
+    struct RUNTIME_FRAME* currentFrame;
+    struct RUNTIME_FRAME* firstFrame;
 };
 
-struct FIELD
+struct RUNTIME_FIELD
 {
     enum EXECUTIVE_OWNER_DESCRIPTOR descriptor;
     struct VECTOR attributes;
@@ -291,13 +294,13 @@ struct FIELD
     struct NSTRING fullName;
     struct NSTRING shortName;
 
-    struct TYPE* owner;
-    struct TYPE* declared;
+    struct RUNTIME_TYPE* owner;
+    struct RUNTIME_TYPE* declared;
 
     VOID* staticValue;
 };
 
-struct METHOD
+struct RUNTIME_METHOD
 {
     enum EXECUTIVE_OWNER_DESCRIPTOR descriptor;
     struct VECTOR attributes;
@@ -308,8 +311,8 @@ struct METHOD
     struct NSTRING fullName;
     struct NSTRING shortName;
 
-    struct TYPE* owner;
-    struct TYPE* returnType;
+    struct RUNTIME_TYPE* owner;
+    struct RUNTIME_TYPE* returnType;
 
     struct VECTOR pool;
     struct VECTOR parameters;
@@ -317,17 +320,18 @@ struct METHOD
     struct VECTOR stringTable;
     struct VECTOR handlers;
 
+    UINTPTR bytecodeLength;
     BYTE* bytecode;
 
     struct FAR_CALL farCall;
 };
 
-struct HANDLER
+struct RUNTIME_EXCEPTION_HANDLER
 {
     enum HANDLER_TYPE handler;
 
-    struct METHOD* owner;
-    struct TYPE* catch;
+    struct RUNTIME_METHOD* owner;
+    struct RUNTIME_TYPE* catch;
 
     INTPTR handlerStart;
     INTPTR handlerEnd;
@@ -341,17 +345,17 @@ struct HANDLER
 
 struct FRAME_BLOCK_MANAGED_POINTER
 {
-    struct TYPE *type;
+    struct RUNTIME_TYPE *type;
     VOID *pointer;
 };
 
 struct FRAME_BLOCK_STRUCT
 {
-    struct TYPE *type;
+    struct RUNTIME_TYPE *type;
     VOID *pointer;
 };
 
-struct FRAME_BLOCK
+struct RUNTIME_FRAME_BLOCK
 {
     enum FRAME_BLOCK_TYPE type;
 
@@ -367,33 +371,35 @@ struct FRAME_BLOCK
     };
 };
 
-struct FRAME
+struct RUNTIME_FRAME
 {
     struct READER* reader;
     INTPTR sp;
     INTPTR maxStack;
 
-    struct FRAME_BLOCK* stack;
-    struct FRAME_BLOCK* args;
-    struct FRAME_BLOCK* variables;
+    struct RUNTIME_FRAME_BLOCK* stack;
+    struct RUNTIME_FRAME_BLOCK* args;
+    struct RUNTIME_FRAME_BLOCK* variables;
 
-    struct METHOD* method;
-    struct DOMAIN* domain;
-    struct THREAD* thread;
+    struct RUNTIME_METHOD* method;
+    struct RUNTIME_DOMAIN* domain;
+    struct RUNTIME_THREAD* thread;
 
-    struct FRAME* next;
+    struct RUNTIME_FRAME* next;
 };
 
+VOID ExJit(struct RUNTIME_METHOD* method);
+
 BOOLEAN ExMetadataIs(enum METADATA_CHARACTERISTICS thisValue, enum METADATA_CHARACTERISTICS metadata);
-VOID ExDomainInitialize(struct DOMAIN* thisPtr);
-VOID ExTypeInitialize(struct TYPE* thisPtr);
-VOID ExFieldInitialize(struct FIELD* thisPtr);
-VOID ExMethodInitialize(struct METHOD* thisPtr);
-VOID ExThreadInitialize(struct THREAD* thisPtr, struct DOMAIN* domain);
+VOID ExDomainInitialize(struct RUNTIME_DOMAIN* thisPtr);
+VOID ExTypeInitialize(struct RUNTIME_TYPE* thisPtr);
+VOID ExFieldInitialize(struct RUNTIME_FIELD* thisPtr);
+VOID ExMethodInitialize(struct RUNTIME_METHOD* thisPtr);
+VOID ExThreadInitialize(struct RUNTIME_THREAD* thisPtr, struct RUNTIME_DOMAIN* domain);
 
 VOID ExExceptionStateInitialize(struct EXCEPTION_STATE* thisPtr);
-VOID ExExceptionStateAppend(struct EXCEPTION_STATE* thisPtr, struct METHOD* method);
+VOID ExExceptionStateAppend(struct EXCEPTION_STATE* thisPtr, struct RUNTIME_METHOD* method);
 VOID ExExceptionStateDrop(struct EXCEPTION_STATE* thisPtr);
 
-struct TYPE* ExDomainLocateType(struct DOMAIN* thisPtr, const CHAR* string);
-struct METHOD* ExTypeLocateMethod(struct TYPE* thisPtr, const CHAR* shortName);
+struct RUNTIME_TYPE* ExDomainLocateType(struct RUNTIME_DOMAIN* thisPtr, const CHAR* string);
+struct RUNTIME_METHOD* ExTypeLocateMethod(struct RUNTIME_TYPE* thisPtr, const CHAR* shortName);

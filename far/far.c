@@ -1,24 +1,25 @@
 #include <stdio.h>
-#include <ex/ex.h>
-#include <far/far.h>
-#include <hp/hp.h>
-#include <ob/ob.h>
-#include <pal/corelib.h>
-#include <pal/pal.h>
+#include <intermarx/ex/ex.h>
+#include <intermarx/ex/runtime.h>
+#include <intermarx/far/far.h>
+#include <intermarx/hp/hp.h>
+#include <intermarx/ob/ob.h>
+#include <intermarx/pal/corelib.h>
+#include <intermarx/pal/pal.h>
 
 INUNATIVE INUEXTERN INTPTR NgAsmNativeInvokeTrampolineIntPtr(VOID *constructedStack, VOID *callTarget);
-
 INUNATIVE INUEXTERN INT32 NgAsmNativeInvokeTrampolineInt32(VOID *constructedStack, VOID *callTarget);
-
 INUNATIVE INUEXTERN INT64 NgAsmNativeInvokeTrampolineInt64(VOID *constructedStack, VOID *callTarget);
-
 INUNATIVE INUEXTERN SINGLE NgAsmNativeInvokeTrampolineSingle(VOID *constructedStack, VOID *callTarget);
-
 INUNATIVE INUEXTERN DOUBLE NgAsmNativeInvokeTrampolineDouble(VOID *constructedStack, VOID *callTarget);
-
 INUNATIVE INUEXTERN VOID *NgAsmNativeInvokeTrampolinePointer(VOID *constructedStack, VOID *callTarget);
 
-MARX_STATUS FarInitialize(struct DOMAIN *domain)
+INUIMPORT struct RUNTIME_TYPE *ExStringType;
+INUIMPORT struct RUNTIME_TYPE *ExCharArrayType;
+INUIMPORT struct RUNTIME_TYPE *ExCharType;
+INUIMPORT struct RUNTIME_TYPE *ExThreadType;
+
+MARX_STATUS FarInitialize(struct RUNTIME_DOMAIN *domain)
 {
     struct FAR_IMPORT import[] = {
         {
@@ -45,14 +46,35 @@ MARX_STATUS FarInitialize(struct DOMAIN *domain)
         {
             L"PalManagedDelegateRemoveImplNative", &PalManagedDelegateRemoveImplNative
         },
+        {
+            L"PalX86BiosCall",&PalX86BiosCall
+        },
+        {
+            L"PalObjectToString",&PalObjectToString
+        },
+        {
+            L"PalX86GetBiosCallBuffer", &PalX86GetBiosCallBuffer
+        },
+        {
+            L"PalBufferMemoryCopy", &PalBufferMemoryCopy
+        },
+        {
+            L"PalBufferMemorySet", &PalBufferMemorySet
+        },
+        {
+            L"PalBufferMemorySetBlock", &PalBufferMemorySetBlock
+        },
+        {
+            L"PalRandomDouble",&PalRandomDouble
+        }
     };
 
     for (int i = 0; i < domain->types.count; ++i)
     {
-        struct TYPE *type = RtlVectorGet(&domain->types, i);
+        struct RUNTIME_TYPE *type = RtlVectorGet(&domain->types, i);
         for (int j = 0; j < type->methods.count; ++j)
         {
-            struct METHOD *method = RtlVectorGet(&type->methods, j);
+            struct RUNTIME_METHOD *method = RtlVectorGet(&type->methods, j);
             for (int z = 0; z < method->attributes.count; ++z)
             {
                 struct FAR_CALL_MANAGED_ATTRIBUTE *attribute = RtlVectorGet(&method->attributes, z);
@@ -86,7 +108,6 @@ MARX_STATUS FarInitialize(struct DOMAIN *domain)
                             method->farCall.source = attribute->source;
 
                             printf("%ls is imported and linked!\r\n", import[r].name);
-                            fflush(stdout);
 
                             break;
                         }
@@ -96,7 +117,7 @@ MARX_STATUS FarInitialize(struct DOMAIN *domain)
         }
     }
 
-    return STATUS_SUCCESS;
+    return MARX_STATUS_SUCCESS;
 }
 
 MARX_STATUS FarLoadArgument(void *argument, UINTPTR argumentSize, void *stack, UINTPTR *stackPtr)
@@ -104,24 +125,24 @@ MARX_STATUS FarLoadArgument(void *argument, UINTPTR argumentSize, void *stack, U
     *stackPtr -= argumentSize;
     const UINTPTR stackPointer = *stackPtr;
     PalMemoryCopy(&stack[stackPointer], argument, argumentSize);
-    return STATUS_SUCCESS;
+    return MARX_STATUS_SUCCESS;
 }
 
-MARX_STATUS FarNativeMethodExecute(struct FRAME *frame, struct FRAME_BLOCK *returnValue)
+MARX_STATUS FarNativeMethodExecute(struct RUNTIME_FRAME *frame, struct RUNTIME_FRAME_BLOCK *returnValue)
 {
     if (frame == NULL)
     {
-        return STATUS_FAIL;
+        return MARX_STATUS_FAIL;
     }
 
     if (frame->method == NULL)
     {
-        return STATUS_FAIL;
+        return MARX_STATUS_FAIL;
     }
 
     if (frame->method->farCall.function == NULL)
     {
-        return STATUS_FAIL;
+        return MARX_STATUS_FAIL;
     }
 
     BYTE stackFrame[16384];
@@ -131,7 +152,7 @@ MARX_STATUS FarNativeMethodExecute(struct FRAME *frame, struct FRAME_BLOCK *retu
     {
         if (frame->args[i].type == MACHINE_OBJECT)
         {
-            struct TYPE *typeValueInfo = RtlVectorGet(&frame->method->parameters, i);
+            struct RUNTIME_TYPE *typeValueInfo = RtlVectorGet(&frame->method->parameters, i);
             if (RtlNStringCompare(typeValueInfo->fullName, ExStringTypeName))
             {
                 struct MANAGED_STRING *str = frame->args[i].descriptor;
@@ -171,9 +192,14 @@ MARX_STATUS FarNativeMethodExecute(struct FRAME *frame, struct FRAME_BLOCK *retu
                             FarLoadArgument(&buffer, sizeof(void *), stackFrame, &stackFramePointer);
                             break;
                         }
+                        case STRING_ENCODING_NONE:
+                        {
+                            FarLoadArgument(&str, sizeof(void *), stackFrame, &stackFramePointer);
+                            break;
+                        }
                         default:
                         {
-                            return STATUS_FAIL;
+                            return MARX_STATUS_FAIL;
                         }
                     }
                 }
@@ -195,9 +221,22 @@ MARX_STATUS FarNativeMethodExecute(struct FRAME *frame, struct FRAME_BLOCK *retu
         {
             FarLoadArgument(&frame->args[i].pointer, sizeof(INTPTR), stackFrame, &stackFramePointer);
         }
+        else if (frame->args[i].type == MACHINE_MANAGED_POINTER)
+        {
+            FarLoadArgument(&frame->args[i].link.pointer, sizeof(void *), stackFrame, &stackFramePointer);
+        }
+        else if (frame->args[i].type == MACHINE_STRUCT)
+        {
+            UINTPTR bufferSize = frame->args[i].valueType.type->size;
+
+            BYTE* buffer = PalStackAllocate(bufferSize);
+            PalMemoryZero(buffer,bufferSize);
+
+            FarLoadArgument(&buffer, sizeof(void *), stackFrame, &stackFramePointer);
+        }
         else if (frame->args[i].type == MACHINE_MFLOAT)
         {
-            struct TYPE *parameterType = RtlVectorGet(&frame->method->parameters, i);
+            struct RUNTIME_TYPE *parameterType = RtlVectorGet(&frame->method->parameters, i);
 
             if (parameterType->inlined == BASE_SINGLE)
             {
@@ -211,16 +250,16 @@ MARX_STATUS FarNativeMethodExecute(struct FRAME *frame, struct FRAME_BLOCK *retu
             }
             else
             {
-                return STATUS_FAIL;
+                return MARX_STATUS_FAIL;
             }
         }
         else
         {
-            return STATUS_FAIL;
+            return MARX_STATUS_FAIL;
         }
     }
 
-    struct FRAME_BLOCK slot;
+    struct RUNTIME_FRAME_BLOCK slot;
 
     switch (frame->method->returnType->inlined)
     {
@@ -271,17 +310,86 @@ MARX_STATUS FarNativeMethodExecute(struct FRAME *frame, struct FRAME_BLOCK *retu
         case BASE_OTHER:
         {
             slot.type = MACHINE_OBJECT;
-            slot.descriptor = NgAsmNativeInvokeTrampolinePointer(&stackFrame[stackFramePointer],
+            VOID* returnPointer = NgAsmNativeInvokeTrampolinePointer(&stackFrame[stackFramePointer],
                                                                  frame->method->farCall.function);
+
+            if (frame->method->returnType == ExStringType)
+            {
+                struct MANAGED_STRING* newString = HpAllocateManaged(sizeof(struct MANAGED_STRING));
+
+                struct RUNTIME_FRAME_BLOCK stringInfo = {
+                    .type = MACHINE_OBJECT,
+                    .descriptor = newString
+                };
+                ExPush(frame,stringInfo);
+                struct RUNTIME_FRAME_BLOCK* blockPointer = &frame->stack[frame->sp-1];
+
+                ((struct MANAGED_STRING*)blockPointer->descriptor)->header.type = ExStringType;
+
+                if (frame->method->farCall.encoding == STRING_ENCODING_ISO646)
+                {
+                    CHAR* returnString = returnPointer;
+                    UINTPTR returnStringLength = strlen(returnString);
+
+                    struct MANAGED_ARRAY *array = ObManagedArrayInitialize(returnStringLength, sizeof(WCHAR));
+
+                    array->elementType = ExCharType;
+                    array->header.type = ExCharArrayType;
+                    array->count = returnStringLength;
+                    for (int i = 0; i < array->count; ++i)
+                    {
+                        array->characters[i] = returnString[i];
+                    }
+                    ((struct MANAGED_STRING*)blockPointer->descriptor)->characters = array;
+
+                    slot.descriptor = blockPointer->descriptor;
+                    ExPop(frame);
+                    free(returnPointer);
+                }
+                else if (frame->method->farCall.encoding == STRING_ENCODING_UCS2)
+                {
+                    WCHAR* returnString = returnPointer;
+                    UINTPTR returnStringLength = 0;
+
+                    struct MANAGED_ARRAY *array = ObManagedArrayInitialize(returnStringLength, sizeof(WCHAR));
+
+                    array->elementType = ExCharType;
+                    array->header.type = ExCharArrayType;
+                    array->count = returnStringLength;
+                    for (int i = 0; i < array->count; ++i)
+                    {
+                        array->characters[i] = returnString[i];
+                    }
+                    ((struct MANAGED_STRING*)blockPointer->descriptor)->characters = array;
+
+                    slot.descriptor = blockPointer->descriptor;
+                    ExPop(frame);
+                    free(returnPointer);
+                }
+                else if (frame->method->farCall.encoding == STRING_ENCODING_NONE)
+                {
+                    ExPop(frame);
+                    slot.descriptor = returnPointer;
+                }
+                else
+                {
+                    return MARX_STATUS_FAIL;
+                }
+            }
+            else
+            {
+                slot.descriptor = returnPointer;
+            }
+
             break;
         }
         default:
         {
-            return STATUS_FAIL;
+            return MARX_STATUS_FAIL;
         }
     }
 
     *returnValue = slot;
 
-    return STATUS_SUCCESS;
+    return MARX_STATUS_SUCCESS;
 }
